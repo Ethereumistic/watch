@@ -1,12 +1,13 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useCallback, useEffect } from "react"
 import { VideoFeed } from "@/components/watch/VideoFeed"
 import { ControlBar } from "@/components/watch/ControlBar"
 import { Chat } from "@/components/watch/Chat"
 import { DeviceSelectors } from "@/components/watch/DeviceSelectors"
 import { VolumeControl } from "@/components/watch/VolumeControl"
 import { Logo } from "@/components/layout/logo"
+import { useWebRTC } from "@/hooks/useWebRTC"
 
 interface ChatMessage {
   id: string
@@ -16,60 +17,58 @@ interface ChatMessage {
 }
 
 export default function WatchPage() {
-  const [isConnected, setIsConnected] = useState(false)
   const [isSearching, setIsSearching] = useState(false)
   const [strangerVolume, setStrangerVolume] = useState(50)
   const [isStrangerMuted, setIsStrangerMuted] = useState(false)
   const [isUserMuted, setIsUserMuted] = useState(false)
-  const [selectedCamera, setSelectedCamera] = useState("")
-  const [selectedMicrophone, setSelectedMicrophone] = useState("")
   const [chatOpen, setChatOpen] = useState(false)
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
-  const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([])
-  const [availableMicrophones, setAvailableMicrophones] = useState<MediaDeviceInfo[]>([])
 
   const strangerVideoRef = useRef<HTMLVideoElement>(null)
   const userVideoRef = useRef<HTMLVideoElement>(null)
 
-  useEffect(() => {
-    async function getDevices() {
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices()
-        const videoDevices = devices.filter((device) => device.kind === "videoinput" && device.deviceId)
-        const audioDevices = devices.filter((device) => device.kind === "audioinput" && device.deviceId)
-        setAvailableCameras(videoDevices)
-        setAvailableMicrophones(audioDevices)
-        if (videoDevices.length > 0) setSelectedCamera(videoDevices[0].deviceId)
-        if (audioDevices.length > 0) setSelectedMicrophone(audioDevices[0].deviceId)
-      } catch (error) {
-        console.error("Error getting devices:", error)
-      }
-    }
-    getDevices()
-  }, [])
+  const { 
+    startSearching, 
+    stopSearching,
+    skipChat,
+    partnerId,
+    availableCameras, 
+    availableMicrophones, 
+    selectedCamera, 
+    selectedMicrophone, 
+    setSelectedCamera, 
+    setSelectedMicrophone 
+  } = useWebRTC(userVideoRef, strangerVideoRef)
 
-  const handleStartStop = () => {
+  const isConnected = !!partnerId
+
+  useEffect(() => {
     if (isConnected) {
-      setIsConnected(false)
       setIsSearching(false)
+    }
+  }, [isConnected])
+
+  const handleStartStop = useCallback(() => {
+    if (isConnected) {
+      skipChat()
+    } else if (isSearching) {
+      setIsSearching(false)
+      stopSearching()
     } else {
       setIsSearching(true)
-      setTimeout(() => {
-        setIsSearching(false)
-        setIsConnected(true)
-      }, 2000)
+      startSearching()
     }
-  }
+  }, [isConnected, isSearching, startSearching, stopSearching, skipChat])
 
-  const handleNext = () => {
-    setIsSearching(true)
-    setTimeout(() => {
-      setIsSearching(false)
-      setIsConnected(true)
-    }, 1500)
-  }
+  const handleNext = useCallback(() => {
+    if (isConnected) {
+      skipChat()
+      setIsSearching(true)
+      startSearching()
+    }
+  }, [isConnected, skipChat, startSearching])
 
-  const handleSendMessage = (text: string) => {
+  const handleSendMessage = useCallback((text: string) => {
     const message: ChatMessage = {
       id: Date.now().toString(),
       text,
@@ -87,21 +86,20 @@ export default function WatchPage() {
       }
       setChatMessages((prev) => [...prev, response])
     }, 1000)
-  }
+  }, [])
 
-  const handleVolumeChange = (value: number) => {
+  const handleVolumeChange = useCallback((value: number) => {
     setStrangerVolume(value)
     if (value > 0) setIsStrangerMuted(false)
-  }
+  }, [])
 
-  const handleMuteToggle = () => {
-    if (isStrangerMuted) {
-      setIsStrangerMuted(false)
-      if (strangerVolume === 0) setStrangerVolume(50)
-    } else {
-      setIsStrangerMuted(true)
-    }
-  }
+  const handleMuteToggle = useCallback(() => {
+    setIsStrangerMuted(prev => !prev)
+  }, [])
+
+  const handleUserMuteToggle = useCallback(() => {
+    setIsUserMuted((prev) => !prev)
+  }, [])
 
   const isEffectivelyMuted = isStrangerMuted || strangerVolume === 0
 
@@ -128,7 +126,7 @@ export default function WatchPage() {
             isMuted={isUserMuted}
             onCameraChange={setSelectedCamera}
             onMicrophoneChange={setSelectedMicrophone}
-            onMuteToggle={() => setIsUserMuted(!isUserMuted)}
+            onMuteToggle={handleUserMuteToggle}
             className="z-10"
           />
         </VideoFeed>
@@ -151,3 +149,4 @@ export default function WatchPage() {
     </div>
   )
 }
+

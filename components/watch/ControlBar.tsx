@@ -16,15 +16,14 @@ export function ControlBar({ isConnected, isSearching, onStartStop, onNext, onTo
     <div className="bg-gray-900 border-t border-gray-700 p-4 flex items-center justify-center space-x-4">
       <div className="flex items-center space-x-4">
         <Button
-          variant={isConnected ? "destructive" : "gradient"}
+          variant={isConnected || isSearching ? "destructive" : "gradient"}
           onClick={onStartStop}
-          className="px-6 py-2 rounded-full font-semibold"
-          disabled={isSearching}
+          className="px-6 py-2 rounded-full font-semibold w-36" // Added fixed width to prevent layout shifts
         >
           {isSearching ? (
             <>
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-              Searching...
+              Stop
             </>
           ) : isConnected ? (
             <>

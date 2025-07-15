@@ -1,5 +1,6 @@
 "use client"
 
+import { useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { Volume2, VolumeX, Flag } from "lucide-react"
@@ -14,6 +15,10 @@ interface VolumeControlProps {
 }
 
 export function VolumeControl({ volume, isMuted, onVolumeChange, onMuteToggle, className }: VolumeControlProps) {
+  const handleSliderChange = useCallback((value: number[]) => {
+    onVolumeChange(value[0]);
+  }, [onVolumeChange]);
+
   return (
     <div className={cn("absolute bottom-2 left-2 right-4 flex justify-between items-center pointer-events-auto", className)}>
       <div className="group flex items-center space-x-2  backdrop-blur-sm rounded-lg p-2">
@@ -28,7 +33,7 @@ export function VolumeControl({ volume, isMuted, onVolumeChange, onMuteToggle, c
         <div className="w-0  group-hover:w-48 opacity-0 group-hover:opacity-100 transition-all duration-300">
           <Slider
             value={[volume]}
-            onValueChange={(value) => onVolumeChange(value[0])}
+            onValueChange={handleSliderChange}
             max={100}
             step={1}
           />
