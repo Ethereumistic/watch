@@ -2,11 +2,13 @@
   "name": "watch",
   "version": "0.1.0",
   "private": true,
-  "scripts": {
-    "dev": "ts-node -r dotenv/config --project tsconfig.server.json server.ts",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
+  {
+    "scripts": {
+      "dev": "next dev",
+      "build": "next build",
+      "start": "next start",
+      "lint": "next lint"
+    }
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.1.10",

@@ -43,12 +43,18 @@ export function useWebRTC(
 
   // 1. Initialize Socket.IO connection
   useEffect(() => {
-    const newSocket = io()
-    setSocket(newSocket)
+    // Connect to the public URL of your deployed signaling server
+    // Fallback to localhost for local development
+    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:8080";
+    console.log(`Connecting to socket at: ${socketUrl}`);
+    const newSocket = io(socketUrl);
+    setSocket(newSocket);
+
     return () => {
-      newSocket.disconnect()
-    }
-  }, [])
+      newSocket.disconnect();
+    };
+  }, []);
+
 
   // 2. Get available media devices
   useEffect(() => {
