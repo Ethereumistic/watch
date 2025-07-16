@@ -13,7 +13,7 @@ export type Profile = {
   times_reported: number;
   warnings_count: number;
   violation_level: number;
-  banned_until?: string;
+  banned_until: string | null;
 }
 
 type AuthState = {

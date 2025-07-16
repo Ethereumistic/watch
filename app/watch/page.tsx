@@ -11,6 +11,9 @@ import { Logo } from "@/components/layout/logo"
 import { useWebRTC } from "@/hooks/useWebRTC"
 import Link from "next/link"
 import { Report } from "@/components/watch/Report"
+import { useAuthStore } from "@/stores/use-auth-store"
+import { ViolationModal } from "@/components/watch/ViolationModal"
+import { Loader2 } from "lucide-react"
 
 interface ChatMessage {
   id: string
@@ -27,35 +30,26 @@ export default function WatchPage() {
   const [unreadMessages, setUnreadMessages] = useState(0)
   const [isSafari, setIsSafari] = useState(false)
 
+  // --- MODAL LOGIC START ---
+  const [showViolationModal, setShowViolationModal] = useState(false);
+  const { profile, loading: authLoading } = useAuthStore();
+  // --- MODAL LOGIC END ---
+
   const strangerVideoRef = useRef<HTMLVideoElement>(null)
   const userVideoRef = useRef<HTMLVideoElement>(null)
 
-  // NEW: More robust browser detection
   useEffect(() => {
     const detectBrowser = async () => {
-      // The 'navigator.brave' object is a specific, reliable way to detect the Brave browser.
-      // We make the function async to use 'await'.
       const isBrave = (navigator.brave && (await navigator.brave.isBrave())) || false;
-
-      // If the browser is NOT Brave, then we can proceed to check if it's Safari.
       if (!isBrave) {
-        // This check is more specific to Safari. It verifies the user agent and vendor,
-        // while excluding other browsers on iOS like Chrome (CriOS) or Firefox (FxiOS).
-        const isSafariBrowser =
-          /Safari/i.test(navigator.userAgent) &&
-          /Apple/i.test(navigator.vendor || '') &&
-          !/CriOS/i.test(navigator.userAgent) &&
-          !/FxiOS/i.test(navigator.userAgent);
+        const isSafariBrowser = /Safari/i.test(navigator.userAgent) && /Apple/i.test(navigator.vendor || '') && !/CriOS/i.test(navigator.userAgent) && !/FxiOS/i.test(navigator.userAgent);
         setIsSafari(isSafariBrowser);
       }
-      // If 'isBrave' is true, the 'isSafari' state will correctly remain false.
     };
-    
-    // Ensure this code only runs in the browser.
     if (typeof window !== "undefined") {
       detectBrowser();
     }
-  }, []); // Empty dependency array ensures this runs only once on mount.
+  }, []);
 
 
   const { 
@@ -76,14 +70,39 @@ export default function WatchPage() {
     setSelectedMicrophone, 
     sendMessage,
     chatMessages,
-    socket
+    socket,
+    localStream // Get the localStream to control the audio track
   } = useWebRTC(userVideoRef, strangerVideoRef)
 
+  // --- MODAL LOGIC START ---
   useEffect(() => {
-    if (partnerProfile) {
-      console.log("Partner profile received:", partnerProfile)
+    // When the auth state is done loading, check the user's profile
+    if (!authLoading && profile) {
+      const isCurrentlyBanned = profile.banned_until && new Date(profile.banned_until) > new Date();
+      // Only show a warning if it hasn't been acknowledged in this browser session
+      const hasUnacknowledgedWarning = profile.violation_level === 1 && sessionStorage.getItem('warningAcknowledged') !== 'true';
+
+      if (isCurrentlyBanned || hasUnacknowledgedWarning) {
+        setShowViolationModal(true);
+      }
     }
-  }, [partnerProfile])
+  }, [profile, authLoading]);
+
+  // FIX: Add a useEffect to control the actual audio track based on the isUserMuted state
+  useEffect(() => {
+    if (localStream) {
+      localStream.getAudioTracks().forEach(track => {
+        track.enabled = !isUserMuted;
+      });
+    }
+  }, [isUserMuted, localStream]);
+
+  const handleAcknowledgeWarning = () => {
+    // Use sessionStorage to remember that the user has seen the warning
+    sessionStorage.setItem('warningAcknowledged', 'true');
+    setShowViolationModal(false);
+  };
+  // --- MODAL LOGIC END ---
 
   const handleReport = async () => {
     if (!strangerVideoRef.current || !partnerId || !socket) {
@@ -102,14 +121,12 @@ export default function WatchPage() {
     
     const recentMessages = chatMessages.slice(-10);
   
-    // FIX: Convert the blob to an ArrayBuffer before sending.
-    // The server can then easily convert this buffer to base64.
     canvas.toBlob(async (blob) => {
       if (blob) {
         const screenshotBuffer = await blob.arrayBuffer();
         socket.emit('initiate-report', { 
           partnerId, 
-          screenshot: screenshotBuffer, // Send the ArrayBuffer
+          screenshot: screenshotBuffer,
           chatLog: { messages: recentMessages }
         });
       }
@@ -137,7 +154,6 @@ export default function WatchPage() {
     }
   }, [isConnected, skipChat])
 
-  // Effect to handle unread messages
   useEffect(() => {
     if (chatMessages.length > 0 && !chatOpen) {
       const lastMessage = chatMessages[chatMessages.length - 1];
@@ -147,7 +163,6 @@ export default function WatchPage() {
     }
   }, [chatMessages, chatOpen]);
 
-  // Effect to close chat panel when partner disconnects
   useEffect(() => {
     if (!isConnected && chatOpen) {
       setChatOpen(false);
@@ -156,8 +171,6 @@ export default function WatchPage() {
       setUnreadMessages(0);
     }
   }, [isConnected, chatOpen]);
-
-  
 
   const handleVolumeChange = useCallback((value: number) => {
     setStrangerVolume(value)
@@ -174,12 +187,36 @@ export default function WatchPage() {
 
   const isEffectivelyMuted = isStrangerMuted || strangerVolume === 0
 
+  // --- MODAL LOGIC START ---
+  // While checking the user's auth status, show a loader
+  if (authLoading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-black">
+        <Loader2 className="h-8 w-8 animate-spin text-white" />
+      </div>
+    );
+  }
+
+  // If the user has a violation, render the modal and block the rest of the page
+  if (showViolationModal && profile) {
+    return (
+      <ViolationModal 
+        isOpen={true}
+        level={profile.violation_level}
+        banned_until={profile.banned_until}
+        onAcknowledge={profile.violation_level === 1 ? handleAcknowledgeWarning : undefined}
+      />
+    )
+  }
+  // --- MODAL LOGIC END ---
+
+  // If the user has no violations, render the normal page content
   return (
     <div className={`${isSafari ? 'h-[89vh]' : 'h-screen'} bg-black flex flex-col relative overflow-hidden`}>
 
       <div className={`flex-1 flex-col lg:flex-row flex transition-all duration-300 ${chatOpen ? "pr-80" : ""}`}>
       <PartnerInfo profile={partnerProfile} />
-      <Report onReport={handleReport} />
+      {isConnected && <Report onReport={handleReport} />}
 
         <VideoFeed ref={strangerVideoRef} isMuted={isEffectivelyMuted} isConnected={isConnected} isSearching={isSearching} isRemote>
         <Link href="/" className="z-50">
@@ -195,6 +232,7 @@ export default function WatchPage() {
           />
         </VideoFeed>
 
+        {/* FIX: The local video feed should always be muted to prevent echo. */}
         <VideoFeed ref={userVideoRef} isMuted isMirrored isConnected={isConnected} isSearching={isSearching} hasCamera={hasCamera} cameraPermission={cameraPermission}>
           <DeviceSelectors
             cameras={availableCameras}

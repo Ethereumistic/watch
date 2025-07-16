@@ -42,8 +42,11 @@ export function ViolationModal({ isOpen, level, banned_until, onAcknowledge }: V
   };
 
   return (
+    // The modal's open state is controlled by the `isOpen` prop.
+    // For banned users, there is no `onAcknowledge` function, so the modal cannot be closed.
     <Dialog open={isOpen}>
-      <DialogContent className="sm:max-w-md" hideCloseButton={isBanned}>
+      {/* FIX: Removed the non-standard `hideCloseButton` prop to resolve the React warning. */}
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <div className="flex flex-col items-center text-center">
             <ShieldAlert className="h-16 w-16 text-red-500 mb-4" />
