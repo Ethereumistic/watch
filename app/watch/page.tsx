@@ -10,6 +10,7 @@ import { VolumeControl } from "@/components/watch/VolumeControl"
 import { Logo } from "@/components/layout/logo"
 import { useWebRTC } from "@/hooks/useWebRTC"
 import Link from "next/link"
+import { Report } from "@/components/watch/Report"
 
 interface ChatMessage {
   id: string
@@ -74,7 +75,8 @@ export default function WatchPage() {
     setSelectedCamera, 
     setSelectedMicrophone, 
     sendMessage,
-    chatMessages
+    chatMessages,
+    socket
   } = useWebRTC(userVideoRef, strangerVideoRef)
 
   useEffect(() => {
@@ -82,6 +84,37 @@ export default function WatchPage() {
       console.log("Partner profile received:", partnerProfile)
     }
   }, [partnerProfile])
+
+  const handleReport = async () => {
+    if (!strangerVideoRef.current || !partnerId || !socket) {
+      console.error("Cannot report: No partner connected or socket not available.");
+      return;
+    }
+  
+    const video = strangerVideoRef.current;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    const recentMessages = chatMessages.slice(-10);
+  
+    // FIX: Convert the blob to an ArrayBuffer before sending.
+    // The server can then easily convert this buffer to base64.
+    canvas.toBlob(async (blob) => {
+      if (blob) {
+        const screenshotBuffer = await blob.arrayBuffer();
+        socket.emit('initiate-report', { 
+          partnerId, 
+          screenshot: screenshotBuffer, // Send the ArrayBuffer
+          chatLog: { messages: recentMessages }
+        });
+      }
+    }, 'image/jpeg', 0.7);
+  };
 
   const isConnected = !!partnerId
   const isCameraReady = hasCamera && cameraPermission === "granted"
@@ -146,6 +179,7 @@ export default function WatchPage() {
 
       <div className={`flex-1 flex-col lg:flex-row flex transition-all duration-300 ${chatOpen ? "pr-80" : ""}`}>
       <PartnerInfo profile={partnerProfile} />
+      <Report onReport={handleReport} />
 
         <VideoFeed ref={strangerVideoRef} isMuted={isEffectivelyMuted} isConnected={isConnected} isSearching={isSearching} isRemote>
         <Link href="/" className="z-50">

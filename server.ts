@@ -3,6 +3,7 @@ import { parse } from "url"
 import next from "next"
 import { Server, Socket } from "socket.io"
 import { v4 as uuidv4 } from "uuid"
+import { supabaseAdmin } from "./lib/supabase/admin"
 
 const dev = process.env.NODE_ENV !== "production"
 const hostname = "localhost"
@@ -26,6 +27,8 @@ interface User {
   state: UserState
   roomId?: string
   profile?: Profile
+  persistentId?: string
+  // IP address is no longer needed here
 }
 
 // --- Server State ---
@@ -112,14 +115,15 @@ app.prepare().then(() => {
   }
 
   io.on("connection", (socket) => {
-    console.log("A user connected:", socket.id)
-    users.set(socket.id, { state: "IDLE" })
+    console.log(`User connected: ${socket.id}`);
+    users.set(socket.id, { state: "IDLE" });
 
-    socket.on("start-searching", ({ profile }: { profile: Profile }) => {
+    socket.on("start-searching", ({ profile }: { profile: Profile & { id: string } }) => {
       const user = users.get(socket.id)
       if (user && (user.state === "IDLE" || user.state === "SEARCHING")) { // Allow re-triggering search
         user.state = "SEARCHING"
-        user.profile = profile // Store the profile
+        user.profile = profile 
+        user.persistentId = profile.id
         // Avoid adding duplicates to the waiting pool
         if (!waitingPool.includes(socket.id)) {
             waitingPool.push(socket.id)
@@ -235,6 +239,68 @@ app.prepare().then(() => {
         io.to(data.partnerId).emit("chat-message", { message: data.message, from: socket.id })
       }
     })
+
+    socket.on('initiate-report', async ({ partnerId, screenshot, chatLog }) => {
+      const user = users.get(socket.id);
+      const partner = users.get(partnerId);
+      
+      if (!user || user.state !== 'IN_CHAT' || !user.roomId || !partner || !user.persistentId || !partner.persistentId) {
+        console.error("Report initiated in invalid state.");
+        return;
+      }
+      
+      const roomId = user.roomId;
+
+      // --- FIX: Correctly handle user states and room cleanup ---
+      
+      // 1. Terminate the connection on the clients' side
+      io.to(partnerId).emit('partner-disconnected');
+      io.to(socket.id).emit('partner-disconnected');
+
+      // 2. Update server state for both users
+      // The reporting user goes idle
+      user.state = 'IDLE';
+      delete user.roomId;
+
+      // The reported user goes back to searching (prioritized)
+      partner.state = 'SEARCHING';
+      delete partner.roomId;
+      if (!waitingPool.includes(partnerId)) {
+          waitingPool.unshift(partnerId); 
+      }
+      io.to(partnerId).emit("auto-searching"); // Tell their client to show searching UI
+
+      // 3. Clean up the room
+      rooms.delete(roomId);
+      console.log(`Room ${roomId} closed due to report. Reported user ${partnerId} is now searching.`);
+      
+      // 4. Attempt to match the reported user immediately
+      tryMatch();
+
+      // 5. Asynchronously invoke the Edge Function to save the report
+      try {
+        const { data, error } = await supabaseAdmin.functions.invoke('create-report-mvp', {
+          body: {
+            reportingUserId: user.persistentId,
+            reportedUserId: partner.persistentId,
+            // IP is no longer sent from here
+            screenshotBase64: Buffer.from(screenshot).toString('base64'),
+            chatLog: chatLog
+          }
+        });
+      
+        if (error) {
+          throw error;
+        }
+        
+        console.log('Report successfully saved:', data);
+        io.to(socket.id).emit('report-successful');
+
+      } catch (error) {
+        console.error('Error invoking create-report-mvp function:', error);
+        io.to(socket.id).emit('report-failed');
+      }
+    });
   })
 
   httpServer
@@ -254,4 +320,3 @@ process.on('SIGINT', () => {
     // Here you could add cleanup logic, like notifying all connected clients
     process.exit(0);
 });
-

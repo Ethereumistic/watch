@@ -16,8 +16,6 @@ import { User, Settings, CreditCard, Shield, Camera, MapPin, Calendar, Clock, Sa
 
 import { createClient } from "@/lib/supabase/client"
 
-import { calculateAge } from "@/lib/utils"
-
 interface UserProfile {
   id: string
   username: string | null
@@ -141,6 +139,17 @@ export default function AccountPage() {
       return email.slice(0, 2).toUpperCase()
     }
     return "U"
+  }
+
+  const calculateAge = (dob: string) => {
+    const today = new Date()
+    const birthDate = new Date(dob)
+    let age = today.getFullYear() - birthDate.getFullYear()
+    const monthDiff = today.getMonth() - birthDate.getMonth()
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--
+    }
+    return age
   }
 
   const formatDate = (dateString: string) => {
@@ -432,4 +441,47 @@ export default function AccountPage() {
                       <div className="flex items-center justify-between"><div className="space-y-0.5"><Label className="text-white/80">Email Notifications</Label><p className="text-sm text-white/60">Receive email updates about your account</p></div><Switch /></div>
                       <div className="flex items-center justify-between"><div className="space-y-0.5"><Label className="text-white/80">Push Notifications</Label><p className="text-sm text-white/60">Get notified about new matches</p></div><Switch defaultChecked /></div>
                       <div className="flex items-center justify-between"><div className="space-y-0.5"><Label className="text-white/80">Sound Effects</Label><p className="text-sm text-white/60">Play sounds during video calls</p></div><Switch defaultChecked /></div>
-                    </C
+                    </CardContent>
+                  </Card>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="subscription" className="mt-0">
+                <div className="space-y-6">
+                  <Card className="bg-white/10 backdrop-blur-sm border border-white/20">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-white"><CreditCard className="h-5 w-5" />Subscription Plan</CardTitle>
+                      <CardDescription className="text-white/80">Manage your subscription and billing information</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      <div className="p-4 border rounded-lg bg-white/5 border-white/10"><div className="flex items-center justify-between mb-4"><div><h3 className="font-semibold text-white">Free Plan</h3><p className="text-sm text-white/80">Basic features included</p></div><Badge className="bg-white/20 text-white border-white/30">Current Plan</Badge></div><ul className="text-sm space-y-1 text-white/60"><li>• 10 matches per day</li><li>• Basic chat features</li><li>• Standard video quality</li></ul></div>
+                      <Button className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white">Upgrade to Premium</Button>
+                    </CardContent>
+                  </Card>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="privacy" className="mt-0">
+                <div className="space-y-6">
+                  <Card className="bg-white/10 backdrop-blur-sm border border-white/20">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-white"><Shield className="h-5 w-5" />Privacy & Security</CardTitle>
+                      <CardDescription className="text-white/80">Control your privacy settings and data sharing</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      <div className="flex items-center justify-between"><div className="space-y-0.5"><Label className="text-white/80">Profile Visibility</Label><p className="text-sm text-white/60">Make your profile visible to other users</p></div><Switch /></div>
+                      <div className="flex items-center justify-between"><div className="space-y-0.5"><Label className="text-white/80">Location Sharing</Label><p className="text-sm text-white/60">Share your location for better matches</p></div><Switch /></div>
+                      <div className="flex items-center justify-between"><div className="space-y-0.5"><Label className="text-white/80">Data Analytics</Label><p className="text-sm text-white/60">Help improve our service with usage data</p></div><Switch defaultChecked /></div>
+                      <Separator className="bg-white/20" />
+                      <div className="space-y-4"><h4 className="font-semibold text-red-400">Danger Zone</h4><Button variant="destructive" className="w-full bg-red-600 hover:bg-red-700 text-white">Delete Account</Button></div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </TabsContent>
+            </Tabs>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

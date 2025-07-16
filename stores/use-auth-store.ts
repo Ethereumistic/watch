@@ -9,7 +9,7 @@ export type Profile = {
   avatar_url?: string;
   dob?: string;
   gender?: 'male' | 'female' | 'couple';
-  // Add other profile fields as needed
+  role: 'free' | 'vip' | 'mod' | 'admin';
 }
 
 type AuthState = {

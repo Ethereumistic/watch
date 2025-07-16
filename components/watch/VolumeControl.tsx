@@ -21,7 +21,7 @@ export function VolumeControl({ volume, isMuted, onVolumeChange, onMuteToggle, c
 
   return (
     <div>
-    <div className={cn("absolute bottom-2 right-2  flex justify-between items-center pointer-events-auto", className)}>
+    <div className={cn("absolute bottom-2 right-2 lg:right-[18%] flex justify-between items-center pointer-events-auto", className)}>
       <div className="group flex items-center space-x-2  backdrop-blur-sm rounded-lg p-2">
         <Button
           size="sm"
@@ -44,15 +44,6 @@ export function VolumeControl({ volume, isMuted, onVolumeChange, onMuteToggle, c
 
     </div>
 
-    <div className="absolute top-2 right-2 z-10">
-      <Button
-        size="sm"
-        variant="outline"
-        className="text-white hover:bg-red-500/20 bg-black/50 backdrop-blur-sm p-2 h-8 w-8"
-      >
-        <Flag className="h-4 w-4" />
-      </Button>
-      </div>
     </div>
   )
 }

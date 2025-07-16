@@ -8,8 +8,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [isLoginOpen, setLoginOpen] = useState(false);
 
-  // Condition to show the navbar on all routes except '/watch'
-  const showNavbar = pathname !== "/watch";
+  // Condition to show the navbar on all routes except '/watch' and '/moderation'
+  const showNavbar = pathname !== "/watch" && !pathname.startsWith("/moderation");
 
   return (
     <>

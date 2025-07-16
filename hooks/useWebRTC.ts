@@ -243,8 +243,7 @@ export function useWebRTC(
   const startSearching = useCallback(() => {
     if (profile) {
       setIsSearching(true)
-      const { id, ...profileData } = profile
-      socket?.emit("start-searching", { profile: profileData })
+      socket?.emit("start-searching", { profile: profile })
     } else {
       console.warn("Cannot start searching without a profile.")
       // Optionally, you could trigger a UI notification here
@@ -298,5 +297,6 @@ export function useWebRTC(
     cameraPermission,
     sendMessage,
     chatMessages,
+    socket, // <-- FIX: Added socket to the return object
   }
 }
