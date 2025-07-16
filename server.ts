@@ -32,34 +32,37 @@ app.prepare().then(() => {
   const io = new Server(httpServer)
 
   const tryMatch = () => {
-    if (waitingPool.length < 2) {
-      console.log("Not enough users to match.", { waiting: waitingPool.length })
-      return
+    // A loop to handle multiple potential matches at once
+    while (waitingPool.length >= 2) {
+      const user1Id = waitingPool.shift()!
+      const user2Id = waitingPool.shift()!
+
+      const user1 = users.get(user1Id)
+      const user2 = users.get(user2Id)
+
+      // If a user disconnected while in the pool, continue to the next iteration
+      if (!user1 || user1.state !== 'SEARCHING') {
+        if(user2Id) waitingPool.unshift(user2Id) // put user2 back
+        continue;
+      }
+       if (!user2 || user2.state !== 'SEARCHING') {
+        if(user1Id) waitingPool.unshift(user1Id) // put user1 back
+        continue;
+      }
+
+      const roomId = uuidv4()
+      rooms.set(roomId, { users: [user1Id, user2Id] })
+
+      user1.state = "IN_CHAT"
+      user1.roomId = roomId
+      user2.state = "IN_CHAT"
+      user2.roomId = roomId
+
+      console.log(`Match found! Room: ${roomId}, Users: [${user1Id}, ${user2Id}]`)
+
+      io.to(user1Id).emit("match-found", { roomId, partnerId: user2Id, initiator: true })
+      io.to(user2Id).emit("match-found", { roomId, partnerId: user1Id, initiator: false })
     }
-
-    const user1Id = waitingPool.shift()!
-    const user2Id = waitingPool.shift()!
-
-    const user1 = users.get(user1Id)
-    const user2 = users.get(user2Id)
-
-    if (!user1 || !user2) {
-      console.error("Could not find users from waiting pool.")
-      return
-    }
-
-    const roomId = uuidv4()
-    rooms.set(roomId, { users: [user1Id, user2Id] })
-
-    user1.state = "IN_CHAT"
-    user1.roomId = roomId
-    user2.state = "IN_CHAT"
-    user2.roomId = roomId
-
-    console.log(`Match found! Room: ${roomId}, Users: [${user1Id}, ${user2Id}]`)
-
-    io.to(user1Id).emit("match-found", { roomId, partnerId: user2Id, initiator: true })
-    io.to(user2Id).emit("match-found", { roomId, partnerId: user1Id, initiator: false })
   }
 
   const handleDisconnect = (socket: Socket) => {
@@ -74,7 +77,7 @@ app.prepare().then(() => {
       waitingPool.splice(waitingIndex, 1)
     }
 
-    // If user was in a chat, notify the partner and clean up
+    // If user was in a chat, notify the partner and put them back in the queue
     if (user.state === "IN_CHAT" && user.roomId) {
       const room = rooms.get(user.roomId)
       if (room) {
@@ -83,8 +86,11 @@ app.prepare().then(() => {
           io.to(partnerId).emit("partner-disconnected")
           const partner = users.get(partnerId)
           if (partner) {
-            partner.state = "IDLE"
+            partner.state = "SEARCHING"
             delete partner.roomId
+            waitingPool.unshift(partnerId) // Prioritize the partner
+            io.to(partnerId).emit("auto-searching") // Tell client to update UI
+            tryMatch()
           }
         }
         rooms.delete(user.roomId)
@@ -100,9 +106,12 @@ app.prepare().then(() => {
 
     socket.on("start-searching", () => {
       const user = users.get(socket.id)
-      if (user && user.state === "IDLE") {
+      if (user && (user.state === "IDLE" || user.state === "SEARCHING")) { // Allow re-triggering search
         user.state = "SEARCHING"
-        waitingPool.push(socket.id)
+        // Avoid adding duplicates to the waiting pool
+        if (!waitingPool.includes(socket.id)) {
+            waitingPool.push(socket.id)
+        }
         console.log(`User ${socket.id} is now searching. Waiting pool: ${waitingPool.length}`)
         tryMatch()
       }
@@ -134,16 +143,23 @@ app.prepare().then(() => {
         // Notify partner
         io.to(partnerId).emit('partner-disconnected');
 
-        // Reset skipper
+        // Reset skipper to searching (and add to back of queue)
         user.state = 'SEARCHING';
         delete user.roomId;
-        waitingPool.push(socket.id);
+        if (!waitingPool.includes(socket.id)) {
+            waitingPool.push(socket.id);
+        }
+        io.to(socket.id).emit("auto-searching");
+
 
         // Reset partner and prioritize them
         if (partner) {
             partner.state = 'SEARCHING';
             delete partner.roomId;
-            waitingPool.unshift(partnerId); // Add to front of the queue
+            if (!waitingPool.includes(partnerId)) {
+                waitingPool.unshift(partnerId); 
+            }
+            io.to(partnerId).emit("auto-searching");
         }
 
         rooms.delete(roomId);
@@ -168,17 +184,23 @@ app.prepare().then(() => {
         // Reset stopper's state to IDLE
         user.state = 'IDLE';
         delete user.roomId;
+        console.log(`User ${socket.id} stopped chat and is now IDLE.`);
 
-        // Reset partner's state to IDLE
+        // Reset partner's state to SEARCHING and prioritize them
         if (partner) {
-            partner.state = 'IDLE';
+            partner.state = 'SEARCHING';
             delete partner.roomId;
+            if (!waitingPool.includes(partnerId)) {
+                waitingPool.unshift(partnerId);
+            }
+            io.to(partnerId).emit("auto-searching");
+            console.log(`Partner ${partnerId} was put back into searching.`);
         }
 
         rooms.delete(roomId);
         console.log(`Room ${roomId} closed because a user stopped the chat.`);
+        tryMatch();
     });
-
 
     socket.on("disconnect", () => handleDisconnect(socket))
 
@@ -193,6 +215,13 @@ app.prepare().then(() => {
 
     socket.on("ice-candidate", (data) => {
       io.to(data.partnerId).emit("ice-candidate", { candidate: data.candidate, senderId: socket.id })
+    })
+
+    socket.on("chat-message", (data) => {
+      const user = users.get(socket.id)
+      if (user && user.state === "IN_CHAT" && data.partnerId) {
+        io.to(data.partnerId).emit("chat-message", { message: data.message, from: socket.id })
+      }
     })
   })
 

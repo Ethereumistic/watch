@@ -4,7 +4,6 @@ import { LogIn } from "@/components/auth/log-in"
 import { SignUp } from "@/components/auth/sign-up"
 import { Gamepad2, Globe, Heart, Star, Users, Zap, Play } from "lucide-react"
 import { useState } from "react"
-import { Navbar } from "@/components/layout/navbar"
 import { useAuthStore } from "@/stores/use-auth-store"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -23,7 +22,6 @@ export default function Page() {
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-60 h-60 bg-indigo-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse delay-500"></div>
       </div>
 
-      <Navbar setLoginOpen={setLoginOpen} />
 
 
       {/* Main Content */}

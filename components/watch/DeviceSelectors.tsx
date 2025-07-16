@@ -29,7 +29,7 @@ export function DeviceSelectors({
   className,
 }: DeviceSelectorsProps) {
   return (
-    <div className={cn("absolute bottom-4 left-4 flex items-center space-x-2 pointer-events-auto", className)}>
+    <div className={cn("absolute top-4 right-4 flex items-center space-x-2 pointer-events-auto", className)}>
       <Select value={selectedCamera} onValueChange={onCameraChange}>
         <SelectTrigger className="w-14 h-8 bg-black/50 backdrop-blur-sm border-none text-white">
           <Camera className="h-4 w-4" />

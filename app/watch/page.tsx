@@ -8,6 +8,7 @@ import { DeviceSelectors } from "@/components/watch/DeviceSelectors"
 import { VolumeControl } from "@/components/watch/VolumeControl"
 import { Logo } from "@/components/layout/logo"
 import { useWebRTC } from "@/hooks/useWebRTC"
+import Link from "next/link"
 
 interface ChatMessage {
   id: string
@@ -17,76 +18,105 @@ interface ChatMessage {
 }
 
 export default function WatchPage() {
-  const [isSearching, setIsSearching] = useState(false)
   const [strangerVolume, setStrangerVolume] = useState(50)
   const [isStrangerMuted, setIsStrangerMuted] = useState(false)
   const [isUserMuted, setIsUserMuted] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [unreadMessages, setUnreadMessages] = useState(0)
+  const [isSafari, setIsSafari] = useState(false)
 
   const strangerVideoRef = useRef<HTMLVideoElement>(null)
   const userVideoRef = useRef<HTMLVideoElement>(null)
+
+  // NEW: More robust browser detection
+  useEffect(() => {
+    const detectBrowser = async () => {
+      // The 'navigator.brave' object is a specific, reliable way to detect the Brave browser.
+      // We make the function async to use 'await'.
+      const isBrave = (navigator.brave && (await navigator.brave.isBrave())) || false;
+
+      // If the browser is NOT Brave, then we can proceed to check if it's Safari.
+      if (!isBrave) {
+        // This check is more specific to Safari. It verifies the user agent and vendor,
+        // while excluding other browsers on iOS like Chrome (CriOS) or Firefox (FxiOS).
+        const isSafariBrowser =
+          /Safari/i.test(navigator.userAgent) &&
+          /Apple/i.test(navigator.vendor || '') &&
+          !/CriOS/i.test(navigator.userAgent) &&
+          !/FxiOS/i.test(navigator.userAgent);
+        setIsSafari(isSafariBrowser);
+      }
+      // If 'isBrave' is true, the 'isSafari' state will correctly remain false.
+    };
+    
+    // Ensure this code only runs in the browser.
+    if (typeof window !== "undefined") {
+      detectBrowser();
+    }
+  }, []); // Empty dependency array ensures this runs only once on mount.
+
 
   const { 
     startSearching, 
     stopSearching,
     skipChat,
+    stopChat,
     partnerId,
+    isSearching,
+    hasCamera,
+    cameraPermission,
     availableCameras, 
     availableMicrophones, 
     selectedCamera, 
     selectedMicrophone, 
     setSelectedCamera, 
-    setSelectedMicrophone 
+    setSelectedMicrophone, 
+    sendMessage,
+    chatMessages
   } = useWebRTC(userVideoRef, strangerVideoRef)
 
   const isConnected = !!partnerId
-
-  useEffect(() => {
-    if (isConnected) {
-      setIsSearching(false)
-    }
-  }, [isConnected])
+  const isCameraReady = hasCamera && cameraPermission === "granted"
 
   const handleStartStop = useCallback(() => {
     if (isConnected) {
-      skipChat()
+      stopChat()
+      setChatOpen(false)
     } else if (isSearching) {
-      setIsSearching(false)
       stopSearching()
     } else {
-      setIsSearching(true)
       startSearching()
     }
-  }, [isConnected, isSearching, startSearching, stopSearching, skipChat])
+  }, [isConnected, isSearching, startSearching, stopSearching, stopChat])
 
   const handleNext = useCallback(() => {
     if (isConnected) {
       skipChat()
-      setIsSearching(true)
-      startSearching()
+      setChatOpen(false)
     }
-  }, [isConnected, skipChat, startSearching])
+  }, [isConnected, skipChat])
 
-  const handleSendMessage = useCallback((text: string) => {
-    const message: ChatMessage = {
-      id: Date.now().toString(),
-      text,
-      isUser: true,
-      timestamp: new Date(),
-    }
-    setChatMessages((prev) => [...prev, message])
-
-    setTimeout(() => {
-      const response: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        text: "Hello! Nice to meet you!",
-        isUser: false,
-        timestamp: new Date(),
+  // Effect to handle unread messages
+  useEffect(() => {
+    if (chatMessages.length > 0 && !chatOpen) {
+      const lastMessage = chatMessages[chatMessages.length - 1];
+      if (!lastMessage.isUser) {
+        setUnreadMessages(prev => prev + 1);
       }
-      setChatMessages((prev) => [...prev, response])
-    }, 1000)
-  }, [])
+    }
+  }, [chatMessages, chatOpen]);
+
+  // Effect to close chat panel when partner disconnects
+  useEffect(() => {
+    if (!isConnected && chatOpen) {
+      setChatOpen(false);
+    }
+    if (!isConnected) {
+      setUnreadMessages(0);
+    }
+  }, [isConnected, chatOpen]);
+
+  
 
   const handleVolumeChange = useCallback((value: number) => {
     setStrangerVolume(value)
@@ -104,10 +134,12 @@ export default function WatchPage() {
   const isEffectivelyMuted = isStrangerMuted || strangerVolume === 0
 
   return (
-    <div className="h-screen bg-black flex flex-col relative overflow-hidden">
+    <div className={`${isSafari ? 'h-[89vh]' : 'h-screen'} bg-black flex flex-col relative overflow-hidden`}>
+          <Link href="/">
           <Logo className="absolute top-2 left-2" />
-      <div className={`flex-1 flex transition-all duration-300 ${chatOpen ? "pr-80" : ""}`}>
-        <VideoFeed ref={strangerVideoRef} isMuted={isEffectivelyMuted} isConnected={isConnected} isSearching={isSearching}>
+          </Link>
+      <div className={`flex-1 flex-col lg:flex-row flex transition-all duration-300 ${chatOpen ? "pr-80" : ""}`}>
+        <VideoFeed ref={strangerVideoRef} isMuted={isEffectivelyMuted} isConnected={isConnected} isSearching={isSearching} isRemote>
           <VolumeControl
             volume={strangerVolume}
             isMuted={isEffectivelyMuted}
@@ -117,7 +149,7 @@ export default function WatchPage() {
           />
         </VideoFeed>
 
-        <VideoFeed ref={userVideoRef} isMuted isMirrored isConnected={isConnected} isSearching={isSearching}>
+        <VideoFeed ref={userVideoRef} isMuted isMirrored isConnected={isConnected} isSearching={isSearching} hasCamera={hasCamera} cameraPermission={cameraPermission}>
           <DeviceSelectors
             cameras={availableCameras}
             microphones={availableMicrophones}
@@ -137,16 +169,22 @@ export default function WatchPage() {
         isSearching={isSearching}
         onStartStop={handleStartStop}
         onNext={handleNext}
-        onToggleChat={() => setChatOpen(!chatOpen)}
+        onToggleChat={() => {
+          setChatOpen(!chatOpen)
+          if (!chatOpen) {
+            setUnreadMessages(0)
+          }
+        }}
+        isCameraReady={isCameraReady}
+        unreadMessages={unreadMessages}
       />
 
       <Chat
         isOpen={chatOpen}
         onClose={() => setChatOpen(false)}
         messages={chatMessages}
-        onSendMessage={handleSendMessage}
+        onSendMessage={sendMessage}
       />
     </div>
   )
 }
-
