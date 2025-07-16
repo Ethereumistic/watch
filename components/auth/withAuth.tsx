@@ -12,22 +12,23 @@ export function withAuth<P extends object>(
 ) {
   const AuthComponent = (props: P) => {
     const router = useRouter();
-    const { profile, isLoading } = useAuthStore();
+    // FIX: The property in the store is named 'loading', not 'isLoading'.
+    const { profile, loading } = useAuthStore();
 
     useEffect(() => {
       // If the profile is done loading and there is no profile, redirect to login
-    //   if (!isLoading && !profile) {
+    //   if (!loading && !profile) {
     //     router.replace('/login'); // Or your login page
     //   }
       
       // If the profile is loaded and the user is not a mod or admin, redirect them
-      if (!isLoading && profile && !['mod', 'admin'].includes(profile.role)) {
+      if (!loading && profile && !['mod', 'admin'].includes(profile.role)) {
         router.replace('/'); // Redirect to home page for unauthorized users
       }
-    }, [profile, isLoading, router]);
+    }, [profile, loading, router]);
 
     // While loading authentication state, show a loading spinner
-    if (isLoading || !profile) {
+    if (loading || !profile) {
       return (
         <div className="flex h-screen w-full items-center justify-center bg-gray-100 dark:bg-gray-900">
           <div className="flex flex-col items-center space-y-2">

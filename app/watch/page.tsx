@@ -15,6 +15,17 @@ import { useAuthStore } from "@/stores/use-auth-store"
 import { ViolationModal } from "@/components/watch/ViolationModal"
 import { Loader2 } from "lucide-react"
 
+// Add a type declaration for the Brave-specific navigator property.
+// This informs TypeScript about the 'brave' object and its 'isBrave' method,
+// preventing a build error without changing the runtime logic.
+declare global {
+  interface Navigator {
+    brave?: {
+      isBrave: () => Promise<boolean>;
+    };
+  }
+}
+
 interface ChatMessage {
   id: string
   text: string
@@ -40,6 +51,7 @@ export default function WatchPage() {
 
   useEffect(() => {
     const detectBrowser = async () => {
+      // This line will no longer cause a type error during the build.
       const isBrave = (navigator.brave && (await navigator.brave.isBrave())) || false;
       if (!isBrave) {
         const isSafariBrowser = /Safari/i.test(navigator.userAgent) && /Apple/i.test(navigator.vendor || '') && !/CriOS/i.test(navigator.userAgent) && !/FxiOS/i.test(navigator.userAgent);
@@ -72,7 +84,12 @@ export default function WatchPage() {
     chatMessages,
     socket,
     localStream // Get the localStream to control the audio track
-  } = useWebRTC(userVideoRef, strangerVideoRef)
+    // FIX: Use a type assertion to match the specific RefObject type expected by the hook.
+    // This resolves the type mismatch without changing runtime functionality.
+  } = useWebRTC(
+      userVideoRef as React.RefObject<HTMLVideoElement>, 
+      strangerVideoRef as React.RefObject<HTMLVideoElement>
+  );
 
   // --- MODAL LOGIC START ---
   useEffect(() => {
@@ -88,7 +105,7 @@ export default function WatchPage() {
     }
   }, [profile, authLoading]);
 
-  // FIX: Add a useEffect to control the actual audio track based on the isUserMuted state
+  // Add a useEffect to control the actual audio track based on the isUserMuted state
   useEffect(() => {
     if (localStream) {
       localStream.getAudioTracks().forEach(track => {
@@ -232,7 +249,7 @@ export default function WatchPage() {
           />
         </VideoFeed>
 
-        {/* FIX: The local video feed should always be muted to prevent echo. */}
+        {/* The local video feed should always be muted to prevent echo. */}
         <VideoFeed ref={userVideoRef} isMuted isMirrored isConnected={isConnected} isSearching={isSearching} hasCamera={hasCamera} cameraPermission={cameraPermission}>
           <DeviceSelectors
             cameras={availableCameras}
