@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react"
 import io, { Socket } from "socket.io-client"
+import { useAuthStore, Profile } from "@/stores/use-auth-store"
 
 interface ChatMessage {
   id: string
@@ -9,6 +10,9 @@ interface ChatMessage {
   isUser: boolean
   timestamp: Date
 }
+
+// Define a type for the partner's profile, which can be null
+type PartnerProfile = Omit<Profile, "id"> | null
 
 const ICE_SERVERS = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
@@ -18,11 +22,13 @@ export function useWebRTC(
   localVideoRef: React.RefObject<HTMLVideoElement>,
   remoteVideoRef: React.RefObject<HTMLVideoElement>
 ) {
+  const { profile } = useAuthStore()
   const [socket, setSocket] = useState<Socket | null>(null)
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const [partnerId, setPartnerId] = useState<string | null>(null)
+  const [partnerProfile, setPartnerProfile] = useState<PartnerProfile>(null)
   const [isSearching, setIsSearching] = useState(false)
   const [hasCamera, setHasCamera] = useState(true)
   const [cameraPermission, setCameraPermission] = useState<"prompt" | "granted" | "denied">("prompt")
@@ -146,17 +152,19 @@ export function useWebRTC(
     }
     remoteStreamRef.current = null;
     setPartnerId(null)
+    setPartnerProfile(null)
   }, [remoteVideoRef])
 
   // 4. Set up signaling listeners
   useEffect(() => {
     if (!socket) return
 
-    socket.on("match-found", async ({ partnerId: newPartnerId, initiator }) => {
+    socket.on("match-found", async ({ partnerId: newPartnerId, initiator, partnerProfile: newPartnerProfile }) => {
       console.log(`Match found with ${newPartnerId}. Initiator: ${initiator}`)
       cleanupConnection(); // Clean up previous connection before starting a new one
       setIsSearching(false)
       setPartnerId(newPartnerId)
+      setPartnerProfile(newPartnerProfile)
       createPeerConnection(newPartnerId)
 
       if (initiator) {
@@ -233,9 +241,15 @@ export function useWebRTC(
   }, [socket, partnerId])
 
   const startSearching = useCallback(() => {
-    setIsSearching(true)
-    socket?.emit("start-searching")
-  }, [socket])
+    if (profile) {
+      setIsSearching(true)
+      const { id, ...profileData } = profile
+      socket?.emit("start-searching", { profile: profileData })
+    } else {
+      console.warn("Cannot start searching without a profile.")
+      // Optionally, you could trigger a UI notification here
+    }
+  }, [socket, profile])
 
   const stopSearching = useCallback(() => {
     setIsSearching(false)
@@ -269,6 +283,7 @@ export function useWebRTC(
     skipChat,
     stopChat,
     partnerId,
+    partnerProfile,
     isSearching,
     switchCamera,
     availableCameras,

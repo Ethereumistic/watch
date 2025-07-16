@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef, useCallback, useEffect } from "react"
+import { PartnerInfo } from "@/components/watch/PartnerInfo"
 import { VideoFeed } from "@/components/watch/VideoFeed"
 import { ControlBar } from "@/components/watch/ControlBar"
 import { Chat } from "@/components/watch/Chat"
@@ -62,6 +63,7 @@ export default function WatchPage() {
     skipChat,
     stopChat,
     partnerId,
+    partnerProfile,
     isSearching,
     hasCamera,
     cameraPermission,
@@ -74,6 +76,12 @@ export default function WatchPage() {
     sendMessage,
     chatMessages
   } = useWebRTC(userVideoRef, strangerVideoRef)
+
+  useEffect(() => {
+    if (partnerProfile) {
+      console.log("Partner profile received:", partnerProfile)
+    }
+  }, [partnerProfile])
 
   const isConnected = !!partnerId
   const isCameraReady = hasCamera && cameraPermission === "granted"
@@ -135,11 +143,15 @@ export default function WatchPage() {
 
   return (
     <div className={`${isSafari ? 'h-[89vh]' : 'h-screen'} bg-black flex flex-col relative overflow-hidden`}>
-          <Link href="/">
-          <Logo className="absolute top-2 left-2" />
-          </Link>
+
       <div className={`flex-1 flex-col lg:flex-row flex transition-all duration-300 ${chatOpen ? "pr-80" : ""}`}>
+      <PartnerInfo profile={partnerProfile} />
+
         <VideoFeed ref={strangerVideoRef} isMuted={isEffectivelyMuted} isConnected={isConnected} isSearching={isSearching} isRemote>
+        <Link href="/" className="z-50">
+          <Logo className="absolute left-2 lg:top-2 top-[88%] z-[5000]" />
+          </Link>
+          
           <VolumeControl
             volume={strangerVolume}
             isMuted={isEffectivelyMuted}

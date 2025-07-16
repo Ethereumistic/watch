@@ -13,9 +13,19 @@ const handle = app.getRequestHandler()
 
 // --- Types ---
 type UserState = "IDLE" | "SEARCHING" | "IN_CHAT"
+
+// Profile type - must match the structure sent from the client
+type Profile = {
+  username: string | null;
+  avatar_url?: string;
+  dob?: string;
+  gender?: 'male' | 'female' | 'couple';
+};
+
 interface User {
   state: UserState
   roomId?: string
+  profile?: Profile
 }
 
 // --- Server State ---
@@ -60,8 +70,9 @@ app.prepare().then(() => {
 
       console.log(`Match found! Room: ${roomId}, Users: [${user1Id}, ${user2Id}]`)
 
-      io.to(user1Id).emit("match-found", { roomId, partnerId: user2Id, initiator: true })
-      io.to(user2Id).emit("match-found", { roomId, partnerId: user1Id, initiator: false })
+      // Exchange profile information
+      io.to(user1Id).emit("match-found", { roomId, partnerId: user2Id, initiator: true, partnerProfile: user2.profile })
+      io.to(user2Id).emit("match-found", { roomId, partnerId: user1Id, initiator: false, partnerProfile: user1.profile })
     }
   }
 
@@ -104,10 +115,11 @@ app.prepare().then(() => {
     console.log("A user connected:", socket.id)
     users.set(socket.id, { state: "IDLE" })
 
-    socket.on("start-searching", () => {
+    socket.on("start-searching", ({ profile }: { profile: Profile }) => {
       const user = users.get(socket.id)
       if (user && (user.state === "IDLE" || user.state === "SEARCHING")) { // Allow re-triggering search
         user.state = "SEARCHING"
+        user.profile = profile // Store the profile
         // Avoid adding duplicates to the waiting pool
         if (!waitingPool.includes(socket.id)) {
             waitingPool.push(socket.id)
@@ -234,3 +246,12 @@ app.prepare().then(() => {
       process.exit(1)
     })
 })
+
+
+// Graceful shutdown
+process.on('SIGINT', () => {
+    console.log('SIGINT received. Shutting down gracefully.');
+    // Here you could add cleanup logic, like notifying all connected clients
+    process.exit(0);
+});
+

@@ -21,7 +21,7 @@ export function VolumeControl({ volume, isMuted, onVolumeChange, onMuteToggle, c
 
   return (
     <div>
-    <div className={cn("absolute bottom-2 left-2 right-4 flex justify-between items-center pointer-events-auto", className)}>
+    <div className={cn("absolute bottom-2 right-2  flex justify-between items-center pointer-events-auto", className)}>
       <div className="group flex items-center space-x-2  backdrop-blur-sm rounded-lg p-2">
         <Button
           size="sm"
