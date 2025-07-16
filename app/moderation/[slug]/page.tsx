@@ -2,140 +2,164 @@
 
 import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
+import { format } from "date-fns"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { ArrowLeft, User, MessageSquare, ImageIcon, Shield, AlertTriangle, Eye, Copy, Loader2 } from "lucide-react"
+import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Calendar } from "@/components/ui/calendar"
+import { ArrowLeft, User, MessageSquare, ImageIcon, Shield, AlertTriangle, Eye, Copy, Loader2, Mail, Calendar as CalendarIcon } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { withAuth } from "@/components/auth/withAuth"
-import { Profile } from "@/stores/use-auth-store"
+import { useAuthStore, Profile } from "@/stores/use-auth-store"
+import { cn } from "@/lib/utils"
 
 const supabase = createClient();
 
-// This interface defines the structure of a report from your database.
-interface Report {
+// This interface defines the structure of the data returned by our 'get-report-details' function
+interface FullReport {
   id: string
   created_at: string
   status: "PENDING" | "REVIEWED" | "ACTION_TAKEN"
-  reporting_user_id: string
-  reported_user_id: string
   chat_log: { messages: { id: string, text: string, isUser: boolean, timestamp: string }[] } | null
-  evidence_url: string // This holds the PATH to the file, not a full URL
+  evidence_url: string
   reported_ip: string
+  reporting_user: { id: string, username: string | null, email?: string }
+  reported_user: { 
+    id: string, 
+    username: string | null, 
+    email?: string, 
+    times_reported: number, 
+    violation_level: number, 
+    banned_until: string | null 
+  }
 }
+
+// Helper component to render the violation status badge
+const ViolationStatusBadge = ({ level, banned_until }: { level: number, banned_until: string | null }) => {
+  const getBanDays = (untilDate: string | null) => {
+    if (!untilDate) return '';
+    const diff = new Date(untilDate).getTime() - new Date().getTime();
+    if (diff <= 0) return 'Expired';
+    const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+    return `${days}d left`;
+  }
+
+  switch (level) {
+    case 1:
+      return <Badge className="bg-orange-500 text-white">Warned</Badge>;
+    case 2:
+      return <Badge className="bg-red-600 text-white">Banned ({getBanDays(banned_until)})</Badge>;
+    case 3:
+      return <Badge className="bg-red-800 text-white">Perma-banned</Badge>;
+    default:
+      return null;
+  }
+};
+
 
 function ReportDetailPage() {
   const params = useParams()
   const router = useRouter()
   const reportId = params.slug as string
   
-  const [report, setReport] = useState<Report | null>(null)
-  const [reportingProfile, setReportingProfile] = useState<Profile | null>(null)
-  const [reportedProfile, setReportedProfile] = useState<Profile | null>(null)
-  const [signedImageUrl, setSignedImageUrl] = useState<string | null>(null); // State for the secure URL
-  
+  const { profile: moderatorProfile } = useAuthStore();
+  const [report, setReport] = useState<FullReport | null>(null)
+  const [signedImageUrl, setSignedImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
-  const [status, setStatus] = useState<Report["status"] | "">("")
+  const [status, setStatus] = useState<FullReport["status"] | "">("")
   const [actionNotes, setActionNotes] = useState("")
   const [selectedAction, setSelectedAction] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [banUntilDate, setBanUntilDate] = useState<Date | undefined>()
 
   useEffect(() => {
     if (!reportId) return;
 
-    const fetchReportAndProfiles = async () => {
+    const fetchReport = async () => {
       setIsLoading(true);
       setError(null);
-      setSignedImageUrl(null); // Reset image URL on new report load
-
-      // Step 1: Fetch the core report data
-      const { data: reportData, error: reportError } = await supabase
-        .from('reports')
-        .select('*')
-        .eq('id', reportId)
-        .single();
-
-      if (reportError || !reportData) {
+      
+      const { data, error: reportError } = await supabase.functions.invoke('get-report-details', { body: { reportId } });
+      
+      if (reportError || !data) {
         setError("Report not found or failed to load.");
         setIsLoading(false);
         return;
       }
       
-      setReport(reportData as Report);
-      setStatus(reportData.status);
-
-      // Step 2: Fetch associated profiles
-      const { data: profilesData, error: profilesError } = await supabase
-        .from('profiles')
-        .select('*')
-        .in('id', [reportData.reporting_user_id, reportData.reported_user_id]);
+      const fullReport = data as FullReport;
+      setReport(fullReport);
+      setStatus(fullReport.status);
       
-      if (profilesData) {
-        setReportingProfile(profilesData.find(p => p.id === reportData.reporting_user_id) as Profile || null);
-        setReportedProfile(profilesData.find(p => p.id === reportData.reported_user_id) as Profile || null);
+      if (fullReport.evidence_url) {
+        const { data: signedUrlData, error: signedUrlError } = await supabase.functions.invoke('get-signed-evidence-url', { body: { filePath: fullReport.evidence_url } });
+        if (signedUrlError) console.error("Error getting signed URL:", signedUrlError);
+        else setSignedImageUrl(signedUrlData.signedUrl);
       }
-
-      // FIX: Step 3: Invoke the new Edge Function to securely get the signed URL
-      if (reportData.evidence_url) {
-        const { data, error } = await supabase.functions.invoke('get-signed-evidence-url', {
-          body: { filePath: reportData.evidence_url }
-        });
-        
-        if (error) {
-          console.error("Error invoking get-signed-evidence-url function:", error);
-        } else {
-          setSignedImageUrl(data.signedUrl);
-        }
-      }
-
+      
       setIsLoading(false);
     };
-
-    fetchReportAndProfiles();
+    fetchReport();
   }, [reportId]);
 
   const handleTakeAction = async () => {
-    if (!selectedAction || !report) return;
+    if (!selectedAction || !report || !moderatorProfile) return;
+    
+    if (selectedAction === 'temp_ban_custom' && !banUntilDate) {
+      alert("Please select a date for the custom ban.");
+      return;
+    }
+
     setIsSubmitting(true);
+
+    if (selectedAction === 'no_action') {
+      const { error } = await supabase.functions.invoke('dismiss-report', { body: { reportId: report.id, evidencePath: report.evidence_url } });
+      if (error) alert("Error: Could not dismiss the report.");
+      else {
+        alert("Report dismissed successfully.");
+        router.push('/moderation');
+      }
+      setIsSubmitting(false);
+      return;
+    }
     
-    // In a real app, you would invoke a Supabase Edge Function here
-    // to securely handle the moderation action and record it in the 'moderation_actions' table.
-    console.log({
-      reportId: report.id,
-      action: selectedAction,
-      notes: actionNotes,
-      targetUserId: report.reported_user_id
+    const { error: actionError } = await supabase.functions.invoke('take-moderation-action', {
+      body: {
+        reportId: report.id,
+        targetUserId: report.reported_user.id,
+        actionType: selectedAction,
+        notes: actionNotes,
+        moderatorId: moderatorProfile.id,
+        bannedUntilTimestamp: selectedAction === 'temp_ban_custom' ? banUntilDate?.toISOString() : undefined
+      }
     });
+
+    if (actionError) {
+      alert("Error: Could not process the moderation action.");
+    } else {
+      alert("Action taken successfully.");
+      router.push('/moderation');
+    }
     
-    await new Promise(resolve => setTimeout(resolve, 1500)); 
-    
-    setStatus("ACTION_TAKEN");
-    if(report) setReport({...report, status: "ACTION_TAKEN"});
     setIsSubmitting(false);
   }
 
-  const copyReportLink = () => {
-    navigator.clipboard.writeText(window.location.href)
+  const copyToClipboard = (text: string) => {
+    if (text) navigator.clipboard.writeText(text);
   }
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString()
-  }
+  const formatDate = (dateString: string) => new Date(dateString).toLocaleString();
 
-  if (isLoading) {
-    return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>
-  }
-
-  if (error || !report) {
-    return <div className="flex h-screen w-full items-center justify-center text-red-500">{error || "Report not found."}</div>
-  }
+  if (isLoading) return <div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>
+  if (error || !report) return <div className="flex h-screen w-full items-center justify-center text-red-500">{error || "Report not found."}</div>
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -153,7 +177,7 @@ function ReportDetailPage() {
           </div>
           <div className="flex items-center space-x-3">
             <Badge className={status === 'ACTION_TAKEN' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>{status.replace("_", " ")}</Badge>
-            <Button variant="outline" size="sm" onClick={copyReportLink}><Copy className="h-4 w-4 mr-2" />Copy Link</Button>
+            <Button variant="outline" size="sm" onClick={() => copyToClipboard(window.location.href)}><Copy className="h-4 w-4 mr-2" />Copy Link</Button>
           </div>
         </div>
       </div>
@@ -164,7 +188,6 @@ function ReportDetailPage() {
             <Card>
               <CardHeader><CardTitle>Evidence Screenshot</CardTitle></CardHeader>
               <CardContent>
-                {/* Use the signedImageUrl state for the src */}
                 {signedImageUrl ? (
                   <Dialog>
                     <DialogTrigger asChild>
@@ -189,7 +212,7 @@ function ReportDetailPage() {
                   <div className="space-y-3">
                     {report.chat_log?.messages?.map((message) => (
                       <div key={message.id} className={`flex ${message.isUser ? "justify-end" : "justify-start"}`}>
-                        <div className={`max-w-xs px-3 py-2 rounded-lg text-sm ${message.isUser ? "bg-blue-100" : "bg-gray-100"}`}>
+                        <div className={`max-w-xs px-3 py-2 rounded-lg text-sm ${message.isUser ? "bg-green-500/50" : "bg-red-500/50"}`}>
                           <p>{message.text}</p>
                         </div>
                       </div>
@@ -206,9 +229,15 @@ function ReportDetailPage() {
               <CardContent className="space-y-4 text-sm">
                 <p><strong>Reported IP:</strong> <span className="font-mono">{report.reported_ip || 'N/A'}</span></p>
                 <Separator />
-                <p><strong>Reporting User:</strong> {reportingProfile?.username || 'Unknown'} ({report.reporting_user_id.slice(0,8)}...)</p>
-                <p><strong>Reported User:</strong> {reportedProfile?.username || 'Unknown'} ({report.reported_user_id.slice(0,8)}...)</p>
-                <p><strong>Total Reports Against User:</strong> <Badge variant="destructive">{reportedProfile?.times_reported || 0}</Badge></p>
+                <p><strong>Reporting User:</strong> {report.reporting_user?.username || 'Unknown'}</p>
+                <p className="flex items-center gap-2"><strong>Email:</strong> {report.reporting_user?.email || 'N/A'} <Copy className="h-3 w-3 cursor-pointer" onClick={() => copyToClipboard(report.reporting_user?.email || '')}/></p>
+                <Separator />
+                <div className="flex items-center justify-between">
+                  <p><strong>Reported User:</strong> {report.reported_user?.username || 'Unknown'}</p>
+                  <ViolationStatusBadge level={report.reported_user.violation_level} banned_until={report.reported_user.banned_until} />
+                </div>
+                <p className="flex items-center gap-2"><strong>Email:</strong> {report.reported_user?.email || 'N/A'} <Copy className="h-3 w-3 cursor-pointer" onClick={() => copyToClipboard(report.reported_user?.email || '')}/></p>
+                <p><strong>Total Reports:</strong> <Badge variant="destructive">{report.reported_user?.times_reported || 0}</Badge></p>
               </CardContent>
             </Card>
 
@@ -220,10 +249,34 @@ function ReportDetailPage() {
                   <SelectContent>
                     <SelectItem value="warning">Issue Warning</SelectItem>
                     <SelectItem value="temp_ban_24h">Temporary Ban (24h)</SelectItem>
+                    <SelectItem value="temp_ban_custom">Custom Temporary Ban</SelectItem>
                     <SelectItem value="permanent_ban">Permanent Ban</SelectItem>
                     <SelectItem value="no_action">No Action Required</SelectItem>
                   </SelectContent>
                 </Select>
+                
+                {selectedAction === 'temp_ban_custom' && (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant={"outline"}
+                        className={cn("w-full justify-start text-left font-normal", !banUntilDate && "text-muted-foreground")}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {banUntilDate ? format(banUntilDate, "PPP") : <span>Pick a ban end date</span>}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={banUntilDate}
+                        onSelect={setBanUntilDate}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                )}
+
                 <Textarea placeholder="Add internal notes..." value={actionNotes} onChange={(e) => setActionNotes(e.target.value)} rows={3}/>
                 <Button onClick={handleTakeAction} disabled={!selectedAction || isSubmitting} className="w-full" variant="destructive">
                   {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin"/> Processing...</> : "Take Action"}

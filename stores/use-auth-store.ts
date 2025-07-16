@@ -10,6 +10,10 @@ export type Profile = {
   dob?: string;
   gender?: 'male' | 'female' | 'couple';
   role: 'free' | 'vip' | 'mod' | 'admin';
+  times_reported: number;
+  warnings_count: number;
+  violation_level: number;
+  banned_until?: string;
 }
 
 type AuthState = {
