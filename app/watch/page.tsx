@@ -13,11 +13,7 @@ import Link from "next/link"
 import { Report } from "@/components/watch/Report"
 import { useAuthStore } from "@/stores/use-auth-store"
 import { ViolationModal } from "@/components/watch/ViolationModal"
-import { Loader2 } from "lucide-react"
 
-// Add a type declaration for the Brave-specific navigator property.
-// This informs TypeScript about the 'brave' object and its 'isBrave' method,
-// preventing a build error without changing the runtime logic.
 declare global {
   interface Navigator {
     brave?: {
@@ -41,17 +37,15 @@ export default function WatchPage() {
   const [unreadMessages, setUnreadMessages] = useState(0)
   const [isSafari, setIsSafari] = useState(false)
 
-  // --- MODAL LOGIC START ---
   const [showViolationModal, setShowViolationModal] = useState(false);
-  const { profile, loading: authLoading } = useAuthStore();
-  // --- MODAL LOGIC END ---
+  // FIX: Remove `loading: authLoading` as it no longer exists in the store.
+  const { profile } = useAuthStore();
 
   const strangerVideoRef = useRef<HTMLVideoElement>(null)
   const userVideoRef = useRef<HTMLVideoElement>(null)
 
   useEffect(() => {
     const detectBrowser = async () => {
-      // This line will no longer cause a type error during the build.
       const isBrave = (navigator.brave && (await navigator.brave.isBrave())) || false;
       if (!isBrave) {
         const isSafariBrowser = /Safari/i.test(navigator.userAgent) && /Apple/i.test(navigator.vendor || '') && !/CriOS/i.test(navigator.userAgent) && !/FxiOS/i.test(navigator.userAgent);
@@ -83,29 +77,26 @@ export default function WatchPage() {
     sendMessage,
     chatMessages,
     socket,
-    localStream // Get the localStream to control the audio track
-    // FIX: Use a type assertion to match the specific RefObject type expected by the hook.
-    // This resolves the type mismatch without changing runtime functionality.
+    localStream
   } = useWebRTC(
       userVideoRef as React.RefObject<HTMLVideoElement>, 
       strangerVideoRef as React.RefObject<HTMLVideoElement>
   );
 
-  // --- MODAL LOGIC START ---
+  // FIX: The dependency array is now just [profile]. The `!authLoading` check is removed.
   useEffect(() => {
-    // When the auth state is done loading, check the user's profile
-    if (!authLoading && profile) {
+    // This effect now runs whenever the profile state changes.
+    // If the user is not logged in, profile will be null and this check will correctly fail.
+    if (profile) {
       const isCurrentlyBanned = profile.banned_until && new Date(profile.banned_until) > new Date();
-      // Only show a warning if it hasn't been acknowledged in this browser session
       const hasUnacknowledgedWarning = profile.violation_level === 1 && sessionStorage.getItem('warningAcknowledged') !== 'true';
 
       if (isCurrentlyBanned || hasUnacknowledgedWarning) {
         setShowViolationModal(true);
       }
     }
-  }, [profile, authLoading]);
+  }, [profile]);
 
-  // Add a useEffect to control the actual audio track based on the isUserMuted state
   useEffect(() => {
     if (localStream) {
       localStream.getAudioTracks().forEach(track => {
@@ -115,11 +106,9 @@ export default function WatchPage() {
   }, [isUserMuted, localStream]);
 
   const handleAcknowledgeWarning = () => {
-    // Use sessionStorage to remember that the user has seen the warning
     sessionStorage.setItem('warningAcknowledged', 'true');
     setShowViolationModal(false);
   };
-  // --- MODAL LOGIC END ---
 
   const handleReport = async () => {
     if (!strangerVideoRef.current || !partnerId || !socket) {
@@ -204,17 +193,9 @@ export default function WatchPage() {
 
   const isEffectivelyMuted = isStrangerMuted || strangerVolume === 0
 
-  // --- MODAL LOGIC START ---
-  // While checking the user's auth status, show a loader
-  if (authLoading) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-black">
-        <Loader2 className="h-8 w-8 animate-spin text-white" />
-      </div>
-    );
-  }
+  // FIX: This entire loading block is removed. The new pattern has no global auth loading state.
+  // The page will render immediately, and the logic now depends on whether `profile` is available.
 
-  // If the user has a violation, render the modal and block the rest of the page
   if (showViolationModal && profile) {
     return (
       <ViolationModal 
@@ -225,13 +206,11 @@ export default function WatchPage() {
       />
     )
   }
-  // --- MODAL LOGIC END ---
 
-  // If the user has no violations, render the normal page content
   return (
     <div className={`${isSafari ? 'h-[89vh]' : 'h-screen'} bg-black flex flex-col relative overflow-hidden`}>
-
-      <div className={`flex-1 flex-col lg:flex-row flex transition-all duration-300 ${chatOpen ? "pr-80" : ""}`}>
+      {/* ... rest of your JSX remains the same ... */}
+       <div className={`flex-1 flex-col lg:flex-row flex transition-all duration-300 ${chatOpen ? "pr-80" : ""}`}>
       <PartnerInfo profile={partnerProfile} />
       {isConnected && <Report onReport={handleReport} />}
 
@@ -249,7 +228,6 @@ export default function WatchPage() {
           />
         </VideoFeed>
 
-        {/* The local video feed should always be muted to prevent echo. */}
         <VideoFeed ref={userVideoRef} isMuted isMirrored isConnected={isConnected} isSearching={isSearching} hasCamera={hasCamera} cameraPermission={cameraPermission}>
           <DeviceSelectors
             cameras={availableCameras}
