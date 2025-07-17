@@ -30,15 +30,6 @@ export function LogIn({ open, onOpenChange }: { open: boolean; onOpenChange: (op
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetTrigger asChild>
-        <Button
-          variant="outline"
-          size="lg"
-          className="border-white/30 text-white hover:bg-white/10 px-8 py-4 text-lg font-semibold rounded-full backdrop-blur-sm bg-transparent"
-        >
-          Sign In
-        </Button>
-      </SheetTrigger>
       <SheetContent side="bottom" className="h-[70vh] rounded-t-3xl">
         <SheetHeader className="text-center pb-6">
           <SheetTitle className="text-2xl font-bold">Welcome Back</SheetTitle>

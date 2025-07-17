@@ -1,16 +1,13 @@
 "use client"
 
-import { LogIn } from "@/components/auth/log-in"
 import { SignUp } from "@/components/auth/sign-up"
 import { Gamepad2, Globe, Heart, Star, Users, Zap, Play } from "lucide-react"
-import { useState } from "react"
 import { useAuthStore } from "@/stores/use-auth-store"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 
 
 export default function Page() {
-  const [loginOpen, setLoginOpen] = useState(false)
   const { session } = useAuthStore()
 
   return (
@@ -74,7 +71,6 @@ export default function Page() {
             ) : (
               <SignUp />
             )}
-            {!session && <LogIn open={loginOpen} onOpenChange={setLoginOpen} />}
           </div>
 
           {/* Stats */}

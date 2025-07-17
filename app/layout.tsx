@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Navbar } from "@/components/layout/navbar";
-import SupabaseAuthListener from "@/components/auth/supabase-auth-listener";
 import { ThemeProvider } from "next-themes";
 import { AppShell } from "./app-shell"
 
@@ -38,10 +36,9 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <AppShell>
-        {children}
-        </AppShell>
+            {children}
+          </AppShell>
         </ThemeProvider>
-        <SupabaseAuthListener />
       </body>
     </html>
   );

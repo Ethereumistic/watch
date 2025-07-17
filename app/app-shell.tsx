@@ -3,6 +3,8 @@
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { Navbar } from "@/components/layout/navbar";
+import { LogIn } from "@/components/auth/log-in";
+import SupabaseAuthListener from "@/components/auth/supabase-auth-listener";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -15,6 +17,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <>
       {showNavbar && <Navbar setLoginOpen={setLoginOpen} />}
       <main>{children}</main>
+      <LogIn open={isLoginOpen} onOpenChange={setLoginOpen} />
+      <SupabaseAuthListener />
     </>
   );
 }

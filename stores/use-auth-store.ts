@@ -9,6 +9,9 @@ export type Profile = {
   avatar_url?: string;
   dob?: string;
   gender?: 'male' | 'female' | 'couple';
+  country: string;
+  created_at: string;
+  updated_at: string;
   role: 'free' | 'vip' | 'mod' | 'admin';
   times_reported: number;
   warnings_count: number;
@@ -56,19 +59,3 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 }))
-
-// Initialize the auth listener
-const supabase = createClient();
-supabase.auth.onAuthStateChange((event, session) => {
-  const { setSession, fetchUserProfile } = useAuthStore.getState();
-  
-  setSession(session);
-  
-  if (session?.user) {
-    fetchUserProfile(session.user).then(() => {
-        useAuthStore.getState().setLoading(false);
-    });
-  } else {
-    useAuthStore.getState().setLoading(false);
-  }
-});

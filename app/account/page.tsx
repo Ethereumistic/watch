@@ -13,20 +13,8 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { User, Settings, CreditCard, Shield, Camera, MapPin, Calendar, Clock, Save, Heart } from "lucide-react"
-
+import { useAuthStore, Profile } from "@/stores/use-auth-store"
 import { createClient } from "@/lib/supabase/client"
-
-interface UserProfile {
-  id: string
-  username: string | null
-  email: string | undefined
-  avatar_url: string | null
-  dob: string | null
-  gender: "male" | "female" | "couple" | null
-  country: string | null
-  created_at: string | null
-  updated_at: string | null
-}
 
 interface Interest {
   id: number
@@ -35,78 +23,53 @@ interface Interest {
 }
 
 export default function AccountPage() {
+  const { user, profile: initialProfile, loading: authLoading } = useAuthStore()
   const [activeTab, setActiveTab] = useState("account")
-  const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [profile, setProfile] = useState<Profile | null>(initialProfile)
   const [interests, setInterests] = useState<Interest[]>([])
   const [selectedInterests, setSelectedInterests] = useState<number[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const supabase = createClient()
 
   useEffect(() => {
-    const fetchData = async () => {
+    setProfile(initialProfile)
+  }, [initialProfile])
+
+  useEffect(() => {
+    const fetchInterests = async () => {
+      if (!user) return
+
       setIsLoading(true)
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: interestsData, error: interestsError } = await supabase
+        .from("interests")
+        .select("*")
 
-      if (user) {
-        const { data: profileData, error: profileError } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", user.id)
-          .single()
-
-        if (profileData) {
-          setProfile({ ...profileData, email: user.email })
-        } else {
-          setProfile({
-            id: user.id,
-            username: null,
-            email: user.email,
-            avatar_url: null,
-            dob: null,
-            gender: null,
-            country: null,
-            created_at: null,
-            updated_at: null,
-          })
-        }
-
-        const { data: interestsData, error: interestsError } = await supabase
-          .from("interests")
-          .select("*")
-
-        if (interestsError) {
-          console.error("Error fetching interests:", interestsError)
-        } else {
-          setInterests(interestsData || [])
-        }
-
-        if (profileData) {
-            const { data: selectedInterestsData, error: selectedInterestsError } = await supabase
-              .from("profile_interests")
-              .select("interest_id")
-              .eq("profile_id", user.id)
-
-            if (selectedInterestsError) {
-              console.error("Error fetching selected interests:", selectedInterestsError)
-            } else {
-              setSelectedInterests(selectedInterestsData.map((i) => i.interest_id))
-            }
-        }
-
+      if (interestsError) {
+        console.error("Error fetching interests:", interestsError)
       } else {
-        // Handle case where user is not logged in
+        setInterests(interestsData || [])
+      }
+
+      const { data: selectedInterestsData, error: selectedInterestsError } = await supabase
+        .from("profile_interests")
+        .select("interest_id")
+        .eq("profile_id", user.id)
+
+      if (selectedInterestsError) {
+        console.error("Error fetching selected interests:", selectedInterestsError)
+      } else {
+        setSelectedInterests(selectedInterestsData.map((i) => i.interest_id))
       }
       setIsLoading(false)
     }
 
-    fetchData()
-  }, [supabase])
+    fetchInterests()
+  }, [user, supabase])
 
   useEffect(() => {
     const updateUserCountry = async () => {
       if (profile && !profile.country) {
-        const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           try {
             const { data, error } = await supabase.functions.invoke('update-country', {
@@ -128,7 +91,7 @@ export default function AccountPage() {
     };
 
     updateUserCountry();
-  }, [profile, supabase]);
+  }, [profile, user, supabase]);
 
 
   const getInitials = (username: string | null, email: string | undefined) => {
@@ -179,7 +142,6 @@ export default function AccountPage() {
 
   const handleSave = async () => {
     setIsLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
 
     if (user && profile) {
       // NOTE: This assumes `avatar_url` is a text field that can store a base64 string.
@@ -197,17 +159,6 @@ export default function AccountPage() {
 
       if (profileError) {
         console.error("Error upserting profile:", profileError)
-      } else {
-        const { data: updatedProfile, error: fetchError } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', user.id)
-            .single();
-        if (fetchError) {
-            console.error("Error refetching profile:", fetchError)
-        } else if (updatedProfile) {
-            setProfile({ ...updatedProfile, email: user.email });
-        }
       }
 
       const { error: interestError } = await supabase
@@ -234,7 +185,7 @@ export default function AccountPage() {
     setIsLoading(false)
   }
 
-  if (isLoading) {
+  if (authLoading || isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center">
         <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div>
@@ -245,7 +196,7 @@ export default function AccountPage() {
   if (!profile) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center">
-        <p className="text-red-500">Could not load profile. Please try again later.</p>
+        <p className="text-red-500">Could not load profile. You might not be logged in.</p>
       </div>
     )
   }
@@ -289,13 +240,13 @@ export default function AccountPage() {
                           <Avatar className="h-24 w-24">
                             <AvatarImage src={profile.avatar_url || "/placeholder.svg"} alt="Profile picture" />
                             <AvatarFallback className="text-lg font-semibold bg-gradient-to-br from-purple-500 to-pink-500 text-white">
-                              {getInitials(profile.username, profile.email)}
+                              {getInitials(profile.username, user?.email)}
                             </AvatarFallback>
                           </Avatar>
                           <Button
                             size="sm"
                             className="absolute -bottom-2 -right-2 rounded-full h-8 w-8 p-0 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white"
-                            onClick={() => fileInputRef.current?.click()} // FIX: Added onClick to trigger file input
+                            onClick={() => fileInputRef.current?.click()}
                           >
                             <Camera className="h-4 w-4" />
                           </Button>
@@ -309,7 +260,7 @@ export default function AccountPage() {
                         </div>
                         <div>
                           <h3 className="font-semibold text-lg text-white">{profile.username || 'New User'}</h3>
-                          <p className="text-sm text-white/80">{profile.email}</p>
+                          <p className="text-sm text-white/80">{user?.email}</p>
                           {profile.dob && (
                             <Badge variant="secondary" className="mt-2 bg-white/20 text-white border-white/30">
                               {calculateAge(profile.dob)} years old
@@ -329,7 +280,7 @@ export default function AccountPage() {
                             onChange={(e) => {
                                 const newUsername = e.target.value;
                                 setProfile((prev) => {
-                                    if (!prev) return null; // FIX: Guard against null state
+                                    if (!prev) return null;
                                     return { ...prev, username: newUsername };
                                 });
                             }}
@@ -347,7 +298,7 @@ export default function AccountPage() {
                             onChange={(e) => {
                                 const newDob = e.target.value;
                                 setProfile((prev) => {
-                                    if (!prev) return null; // FIX: Guard against null state
+                                    if (!prev) return null;
                                     return { ...prev, dob: newDob };
                                 });
                             }}
@@ -361,7 +312,7 @@ export default function AccountPage() {
                             value={profile.gender || ''}
                             onValueChange={(value: "male" | "female" | "couple") =>
                                 setProfile((prev) => {
-                                    if (!prev) return null; // FIX: Guard against null state
+                                    if (!prev) return null;
                                     return { ...prev, gender: value };
                                 })
                             }
