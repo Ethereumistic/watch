@@ -4,22 +4,30 @@ import { useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuthStore, Profile } from "@/stores/use-auth-store"
 
-export default function SupabaseAuthListener() { // No longer needs serverAccessToken
+export default function SupabaseAuthListener() {
   const supabase = createClient()
-  const { setSession, fetchUserProfile, profile, setProfile } = useAuthStore()
-  const currentUserId = profile?.id
+  const { setSession, fetchUserProfile, setProfile } = useAuthStore()
 
+  // Real-time auth state change listener
   useEffect(() => {
-    // Handles live auth changes (login, logout in another tab).
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        setSession(session)
-        // If a new user logs in or the session changes for the current user, re-fetch the profile.
-        if (event === "SIGNED_IN" && session?.user) {
-          await fetchUserProfile(session.user);
-        }
-        // If the user signs out, the store's session will be set to null.
-        if (event === "SIGNED_OUT") {
+      async (_event, session) => {
+        // Get the most up-to-date profile from the store *inside* the callback
+        // This avoids stale closures and ensures we are comparing against the current state.
+        const currentProfile = useAuthStore.getState().profile;
+        const newUserId = session?.user?.id;
+
+        // Set the session on every auth event. This keeps the user object in sync.
+        setSession(session);
+
+        // If a new user has logged in (their ID is different from the current profile ID),
+        // fetch their profile data.
+        if (newUserId && newUserId !== currentProfile?.id) {
+          await fetchUserProfile(session!.user);
+        } 
+        // If the session has become null, it means the user has signed out.
+        // Clear the profile from the store.
+        else if (!newUserId && currentProfile) {
           setProfile(null);
         }
       }
@@ -30,8 +38,9 @@ export default function SupabaseAuthListener() { // No longer needs serverAccess
     }
   }, [setSession, fetchUserProfile, setProfile, supabase])
 
-  // Real-time profile updates listener remains the same
+  // Real-time profile updates listener (no changes needed here)
   useEffect(() => {
+    const currentUserId = useAuthStore.getState().profile?.id;
     if (!currentUserId) return;
 
     const channel = supabase.channel(`profile-updates:${currentUserId}`)
@@ -39,7 +48,8 @@ export default function SupabaseAuthListener() { // No longer needs serverAccess
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${currentUserId}` },
         (payload) => {
-          setProfile(payload.new);
+          // Use setProfile to update the store with the latest data from the database.
+          setProfile(payload.new as Profile);
         }
       )
       .subscribe();
@@ -47,7 +57,7 @@ export default function SupabaseAuthListener() { // No longer needs serverAccess
     return () => {
       supabase.removeChannel(channel);
     }
-  }, [currentUserId, setProfile, supabase]);
+  }, [setProfile, supabase]);
 
   return null
 }
