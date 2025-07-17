@@ -4,68 +4,50 @@ import { useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useAuthStore, Profile } from "@/stores/use-auth-store"
 
-export default function SupabaseAuthListener() {
+export default function SupabaseAuthListener() { // No longer needs serverAccessToken
   const supabase = createClient()
-  // Get the profile object itself to listen for changes to its ID
-  const { profile, setSession, setProfile, setLoading } = useAuthStore()
+  const { setSession, fetchUserProfile, profile, setProfile } = useAuthStore()
+  const currentUserId = profile?.id
 
-  // This is your existing useEffect that handles login/logout. It is unchanged.
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      setSession(session)
-      if (session?.user) {
-        const { data: profile, error } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", session.user.id)
-          .single()
-
-        if (error) {
-          console.error("Error fetching profile:", error)
-          setProfile(null)
-        } else {
-          setProfile(profile as Profile)
+    // Handles live auth changes (login, logout in another tab).
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        setSession(session)
+        // If a new user logs in or the session changes for the current user, re-fetch the profile.
+        if (event === "SIGNED_IN" && session?.user) {
+          await fetchUserProfile(session.user);
         }
-      } else {
-        setProfile(null)
+        // If the user signs out, the store's session will be set to null.
+        if (event === "SIGNED_OUT") {
+          setProfile(null);
+        }
       }
-      setLoading(false)
-    })
+    )
 
     return () => {
       subscription.unsubscribe()
     }
-  }, [setSession, setProfile, setLoading, supabase])
+  }, [setSession, fetchUserProfile, setProfile, supabase])
 
-  // FIX: This new useEffect listens for real-time profile updates (e.g., bans/warnings).
+  // Real-time profile updates listener remains the same
   useEffect(() => {
-    // Only create a subscription if we have a logged-in user with a profile
-    if (!profile?.id) return;
+    if (!currentUserId) return;
 
-    // Create a Supabase channel that subscribes to changes on the current user's specific row
-    const channel = supabase.channel(`profile-updates:${profile.id}`)
-      .on(
+    const channel = supabase.channel(`profile-updates:${currentUserId}`)
+      .on<Profile>(
         'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'profiles',
-          filter: `id=eq.${profile.id}` // This ensures we only get updates for our own profile
-        },
+        { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${currentUserId}` },
         (payload) => {
-          console.log('Real-time profile update received!', payload.new);
-          // When an update is pushed from the database, update the profile in our global store immediately.
-          setProfile(payload.new as Profile);
+          setProfile(payload.new);
         }
       )
       .subscribe();
 
-    // This cleanup function is crucial. It removes the channel subscription when the component unmounts
-    // or when the user logs out (and the profile.id changes).
     return () => {
       supabase.removeChannel(channel);
     }
-  }, [profile?.id, setProfile, supabase]); // This effect depends on the user's ID
+  }, [currentUserId, setProfile, supabase]);
 
   return null
 }
