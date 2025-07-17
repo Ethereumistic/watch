@@ -11,71 +11,118 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Switch } from "@/components/ui/switch"
 import { User, Settings, CreditCard, Shield, Camera, MapPin, Calendar, Clock, Save, Heart } from "lucide-react"
 import { useAuthStore, Profile } from "@/stores/use-auth-store"
 import { createClient } from "@/lib/supabase/client"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 
-interface Interest {
-  id: number
-  name: string
-  emoji: string
+// The ENUM values from your database, now defined as a constant in the frontend.
+// This is the single source of truth for rendering interests.
+const ALL_POSSIBLE_INTERESTS = [
+    { name: 'Politics', emoji: '🗳️' },
+    { name: 'Sports', emoji: '⚽' },
+    { name: 'Music', emoji: '🎵' },
+    { name: 'Gaming', emoji: '🎮' },
+    { name: 'Science', emoji: '🧬' },
+    { name: 'Technology', emoji: '🤖' },
+    { name: 'Movies & TV', emoji: '🎬' },
+    { name: 'Books & Writing', emoji: '📚' },
+    { name: 'Health & Fitness', emoji: '🏋️' },
+    { name: 'Food & Cooking', emoji: '🍔' },
+    { name: 'Travel & Adventure', emoji: '✈️' },
+    { name: 'Art & Design', emoji: '🎨' },
+    { name: 'Fashion & Beauty', emoji: '👗' },
+    { name: 'Pets & Animals', emoji: '🐶' },
+    { name: 'Business & Finance', emoji: '📈' },
+    { name: 'Lifestyle & Wellness', emoji: '🧘' }
+];
+
+// We declare the shape of our profile object from the database
+type ProfileWithInterests = Profile & {
+  interests: string[] | null; // The DB ENUM array comes back as a string array
 }
 
 export default function AccountPage() {
   const { user, profile: globalProfile, setProfile: setGlobalProfile } = useAuthStore()
 
   const [activeTab, setActiveTab] = useState("account")
-  const [editableProfile, setEditableProfile] = useState<Profile | null>(globalProfile)
+  const [editableProfile, setEditableProfile] = useState<ProfileWithInterests | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
   
-  // --- STATE SEPARATION: The core fix for the button bug ---
-  // 1. A state for when the page's initial data (interests) is loading.
-  const [isPageLoading, setIsPageLoading] = useState(true);
-  // 2. A state ONLY for when the user clicks the "Save Changes" button.
-  const [isSaving, setIsSaving] = useState(false);
-  // ---
-  
-  const [interests, setInterests] = useState<Interest[]>([])
-  const [selectedInterests, setSelectedInterests] = useState<number[]>([])
+  // This state holds the names (strings) of the user's selected interests.
+  const [selectedInterests, setSelectedInterests] = useState<string[]>([])
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const supabase = createClient()
 
+  // --- THE FIX IS HERE ---
+  // This effect is now designed to ONLY initialize the local state.
+  // It runs when the globalProfile is first loaded, but the condition inside prevents
+  // subsequent real-time updates from overwriting the user's unsaved changes in the form.
   useEffect(() => {
-    setEditableProfile(globalProfile)
-  }, [globalProfile])
-
-  useEffect(() => {
-    setEditableProfile(globalProfile)
-  }, [globalProfile])
-
-  // This effect now uses its OWN loading state: `isPageLoading`
-  useEffect(() => {
-    if (user?.id) {
-      const fetchPageData = async () => {
-        setIsPageLoading(true); // Start loading page data
-        try {
-          const interestsPromise = supabase.from("interests").select("*")
-          const selectedInterestsPromise = supabase.from("profile_interests").select("interest_id").eq("profile_id", user.id)
-
-          const [interestsResult, selectedInterestsResult] = await Promise.all([interestsPromise, selectedInterestsPromise]);
-
-          if (interestsResult.error) throw interestsResult.error;
-          if (selectedInterestsResult.error) throw selectedInterestsResult.error;
-
-          setInterests(interestsResult.data || [])
-          setSelectedInterests(selectedInterestsResult.data?.map((i) => i.interest_id) || [])
-        } catch (error) {
-          console.error("Error fetching page data:", error);
-        } finally {
-          setIsPageLoading(false); // Finish loading page data
-        }
-      }
-      fetchPageData()
-    } else {
-        setIsPageLoading(false); // If there's no user, we're not loading anything.
+    // We only want to set the local state if it hasn't been set yet (it's null)
+    // AND the global profile has actually been loaded. This acts as a gate.
+    if (globalProfile && !editableProfile) {
+        setEditableProfile(globalProfile as ProfileWithInterests);
+        setSelectedInterests(globalProfile.interests || []);
     }
-  }, [user?.id, supabase])
+  }, [globalProfile, editableProfile]); // Dependencies ensure it runs at the right time for initialization.
+  
+  /**
+   * ROBUST SAVE HANDLER
+   * This function now correctly handles the state synchronization.
+   */
+  const handleSave = async () => {
+    // 1. Set the button to its "saving" state to prevent multiple clicks.
+    setIsSaving(true);
+    try {
+      if (!user || !editableProfile) {
+        throw new Error("User or profile not available for saving.");
+      }
+      
+      // 2. Prepare the data payload for the database update.
+      const updatePayload = {
+        username: editableProfile.username,
+        dob: editableProfile.dob,
+        gender: editableProfile.gender,
+        updated_at: new Date().toISOString(), // Always send a fresh timestamp
+        interests: selectedInterests,
+      };
+
+      // 3. Call Supabase to update the profile and select the new data back in one go.
+      //    .select().single() ensures we get the definitive, updated row back from the DB.
+      const { data: updatedProfile, error } = await supabase
+        .from("profiles")
+        .update(updatePayload)
+        .eq('id', user.id)
+        .select()
+        .single();
+      
+      // 4. If there was an error during the DB operation, throw it to the catch block.
+      if (error) {
+        throw error;
+      }
+      
+      // 5. After a successful save, we explicitly update BOTH the global and local state.
+      
+      // 5a. Update the global Zustand store. This ensures other parts of the app
+      //     that rely on `useAuthStore` have the latest profile information.
+      setGlobalProfile(updatedProfile);
+
+      // 5b. CRITICAL: Update the local `editableProfile` state. This re-synchronizes
+      //     the form with the data that was just saved, including the new `updated_at`
+      //     timestamp generated by the database.
+      setEditableProfile(updatedProfile as ProfileWithInterests);
+
+    } catch (error) {
+      console.error("Error saving profile:", error);
+      // You could add a user-facing error notification here (e.g., a toast).
+    } finally {
+      // 6. This `finally` block ALWAYS runs, whether the save succeeded or failed.
+      //    It resets the button to its normal state, allowing the user to try again.
+      setIsSaving(false);
+    }
+  };
   
   const getInitials = (username: string | null, email: string | undefined) => {
     if (username && username.length >= 2) return username.slice(0, 2).toUpperCase()
@@ -100,38 +147,10 @@ export default function AccountPage() {
     return new Date(dateString).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" });
   }
 
-  const handleSave = async () => {
-    setIsSaving(true); // Start saving
-    try {
-      if (!user || !editableProfile) throw new Error("User or profile not available.");
-      
-      const { data: updatedProfile, error: profileError } = await supabase
-        .from("profiles")
-        .update({
-          username: editableProfile.username,
-          // ... other fields
-        })
-        .eq('id', user.id)
-        .select()
-        .single();
-      
-      if (profileError) throw profileError;
-
-      // ... logic to update interests ...
-      
-      setGlobalProfile(updatedProfile);
-    } catch (error) {
-      console.error("Error saving profile:", error);
-    } finally {
-      setIsSaving(false); // Finish saving
-    }
-  };
-
-  // 3. The new check. If the store is initialized and there's no profile, the user is logged out.
-  if (!globalProfile) {
+  if (!editableProfile) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center">
-        <p className="text-gray-500">Loading...</p>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
       </div>
     );
   }
@@ -146,7 +165,6 @@ export default function AccountPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           <div className="lg:col-span-1">
-            {/* Side Navigation Tabs... */}
              <Card className="sticky top-4 bg-white/10 backdrop-blur-sm border border-white/20">
               <CardContent className="p-0">
                 <Tabs value={activeTab} onValueChange={setActiveTab} orientation="vertical" className="w-full">
@@ -162,10 +180,8 @@ export default function AccountPage() {
           </div>
 
           <div className="lg:col-span-3">
-            <Tabs value={activeTab}>
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsContent value="account" className="mt-0">
-                  {/* We only render the form if we have a profile to edit */}
-                  {editableProfile && (
                     <div className="space-y-6">
                       <Card className="bg-white/10 backdrop-blur-sm border border-white/20">
                         <CardHeader>
@@ -181,7 +197,10 @@ export default function AccountPage() {
                                   {getInitials(editableProfile.username, user?.email)}
                                 </AvatarFallback>
                               </Avatar>
-                              {/* ... Avatar upload logic ... */}
+                              <Button size="sm" className="absolute -bottom-2 -right-2 rounded-full h-8 w-8 p-0 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white" onClick={() => fileInputRef.current?.click()}>
+                                <Camera className="h-4 w-4" />
+                              </Button>
+                              <input ref={fileInputRef} type="file" accept="image/*" className="hidden"  />
                             </div>
                             <div>
                               <h3 className="font-semibold text-lg text-white">{editableProfile.username || 'New User'}</h3>
@@ -192,19 +211,15 @@ export default function AccountPage() {
 
                           <Separator className="bg-white/20" />
                           
-                          {/* Form Grid */}
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {/* Username */}
                             <div className="space-y-2">
                               <Label htmlFor="username" className="text-white/80">Username</Label>
                               <Input id="username" value={editableProfile.username || ''} onChange={e => setEditableProfile(p => p ? { ...p, username: e.target.value } : null)} placeholder="Enter your username" className="bg-white/10 border-white/20 text-white placeholder:text-white/60" />
                             </div>
-                            {/* Date of Birth */}
                             <div className="space-y-2">
                               <Label htmlFor="dob" className="text-white/80">Date of Birth</Label>
-                              <Input id="dob" type="date" value={editableProfile.dob || ''} onChange={e => setEditableProfile(p => p ? { ...p, dob: e.target.value } : null)} className="bg-white/10 border-white/20 text-white" />
+                              <Input id="dob" type="date" value={editableProfile.dob ? new Date(editableProfile.dob).toISOString().split('T')[0] : ''} onChange={e => setEditableProfile(p => p ? { ...p, dob: e.target.value } : null)} className="bg-white/10 border-white/20 text-white" />
                             </div>
-                            {/* Gender */}
                             <div className="space-y-2">
                               <Label htmlFor="gender" className="text-white/80">Gender</Label>
                               <Select value={editableProfile.gender || ''} onValueChange={(value: 'male' | 'female' | 'couple') => setEditableProfile(p => p ? { ...p, gender: value } : null)}>
@@ -218,7 +233,6 @@ export default function AccountPage() {
                                 </SelectContent>
                               </Select>
                             </div>
-                            {/* Country */}
                             <div className="space-y-2">
                               <Label htmlFor="country" className="text-white/80">Country</Label>
                               <div className="relative">
@@ -227,27 +241,32 @@ export default function AccountPage() {
                               </div>
                             </div>
                           </div>
-
-                          <Separator className="bg-white/20" />
                           
-                          {/* Interests Section */}
+                          <Separator className="bg-white/20" />
+
                           <div className="space-y-4">
                             <h4 className="font-semibold flex items-center gap-2 text-white"><Heart className="h-4 w-4" />Interests</h4>
-                            <div className="flex flex-wrap gap-2">
-                              {interests.map((interest) => (
-                                <Badge key={interest.id} variant={selectedInterests.includes(interest.id) ? "default" : "secondary"} onClick={() => {
-                                  const newSelected = selectedInterests.includes(interest.id)
-                                    ? selectedInterests.filter(id => id !== interest.id)
-                                    : [...selectedInterests, interest.id];
-                                  setSelectedInterests(newSelected);
-                                }} className="cursor-pointer bg-white/20 text-white border-white/30 hover:bg-white/30">{interest.emoji} {interest.name}</Badge>
+                            <ToggleGroup
+                              type="multiple"
+                              variant="outline"
+                              value={selectedInterests}
+                              onValueChange={(value) => setSelectedInterests(value)}
+                              className="flex flex-wrap gap-2 justify-start"
+                            >
+                              {ALL_POSSIBLE_INTERESTS.map((interest) => (
+                                <ToggleGroupItem 
+                                  key={interest.name} 
+                                  value={interest.name} 
+                                  className="border-white/30 bg-white/10 text-white/80 hover:bg-white/20 hover:text-white data-[state=on]:bg-gradient-to-br  from-purple-900 via-blue-900 to-indigo-900 data-[state=on]:text-white data-[state=on]:border-pink-500"
+                                >
+                                  {interest.emoji} <span className="ml-2">{interest.name}</span>
+                                </ToggleGroupItem>
                               ))}
-                            </div>
+                            </ToggleGroup>
                           </div>
 
                           <Separator className="bg-white/20" />
 
-                          {/* Account Info Timestamps */}
                           <div className="space-y-4">
                             <h4 className="font-semibold flex items-center gap-2 text-white"><Clock className="h-4 w-4" />Account Information</h4>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
@@ -257,15 +276,17 @@ export default function AccountPage() {
                           </div>
 
                           <div className="flex justify-end">
-            {/* THIS BUTTON NOW ONLY RESPONDS TO `isSaving` */}
-            <Button onClick={handleSave} disabled={isSaving || isPageLoading} className="px-8 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white">
-                {isSaving ? (<><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>Saving...</>) : (<><Save className="h-4 w-4 mr-2" />Save Changes</>)}
-            </Button>
-        </div>
+                            <Button 
+                              onClick={handleSave} 
+                              disabled={isSaving} 
+                              className="px-8 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white transition-all duration-300 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {isSaving ? (<><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>Saving...</>) : (<><Save className="h-4 w-4 mr-2" />Save Changes</>)}
+                            </Button>
+                          </div>
                         </CardContent>
                       </Card>
                     </div>
-                  )}
               </TabsContent>
             </Tabs>
           </div>

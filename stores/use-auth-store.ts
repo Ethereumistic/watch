@@ -17,6 +17,7 @@ export type Profile = {
   warnings_count: number;
   violation_level: number;
   banned_until: string | null;
+  interests: string[] | null;
 }
 
 type AuthState = {
