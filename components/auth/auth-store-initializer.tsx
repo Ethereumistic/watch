@@ -14,7 +14,8 @@ export function AuthStoreInitializer({ session, profile }: AuthStoreInitializerP
 
   // This ensures the state is set only once on the initial client load.
   if (!initialized.current) {
-    useAuthStore.setState({ session, profile, user: session?.user ?? null });
+    // Set the initial session/profile data AND set isInitialized to true.
+    useAuthStore.setState({ session, profile, user: session?.user ?? null, isInitialized: true });
     initialized.current = true;
   }
 

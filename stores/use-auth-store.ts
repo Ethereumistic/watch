@@ -24,16 +24,17 @@ type AuthState = {
   session: Session | null;
   user: User | null;
   profile: Profile | null;
+  isInitialized: boolean; // Add this flag
   setSession: (session: Session | null) => void;
   setProfile: (profile: Profile | null) => void;
   fetchUserProfile: (user: User) => Promise<void>;
 }
 
-// NOTE: The 'loading' state and its setters are completely removed.
 export const useAuthStore = create<AuthState>((set) => ({
   session: null,
   user: null,
   profile: null,
+  isInitialized: false, // Default to false on app load
   setSession: (session) => set({ session, user: session?.user ?? null }),
   setProfile: (profile) => set({ profile }),
   fetchUserProfile: async (user: User) => {
