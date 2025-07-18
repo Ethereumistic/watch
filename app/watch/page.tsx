@@ -14,14 +14,6 @@ import { Report } from "@/components/watch/Report"
 import { useAuthStore } from "@/stores/use-auth-store"
 import { ViolationModal } from "@/components/watch/ViolationModal"
 
-declare global {
-  interface Navigator {
-    brave?: {
-      isBrave: () => Promise<boolean>;
-    };
-  }
-}
-
 interface ChatMessage {
   id: string
   text: string
@@ -35,28 +27,12 @@ export default function WatchPage() {
   const [isUserMuted, setIsUserMuted] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
   const [unreadMessages, setUnreadMessages] = useState(0)
-  const [isSafari, setIsSafari] = useState(false)
 
   const [showViolationModal, setShowViolationModal] = useState(false);
-  // FIX: Remove `loading: authLoading` as it no longer exists in the store.
   const { profile } = useAuthStore();
 
   const strangerVideoRef = useRef<HTMLVideoElement>(null)
   const userVideoRef = useRef<HTMLVideoElement>(null)
-
-  useEffect(() => {
-    const detectBrowser = async () => {
-      const isBrave = (navigator.brave && (await navigator.brave.isBrave())) || false;
-      if (!isBrave) {
-        const isSafariBrowser = /Safari/i.test(navigator.userAgent) && /Apple/i.test(navigator.vendor || '') && !/CriOS/i.test(navigator.userAgent) && !/FxiOS/i.test(navigator.userAgent);
-        setIsSafari(isSafariBrowser);
-      }
-    };
-    if (typeof window !== "undefined") {
-      detectBrowser();
-    }
-  }, []);
-
 
   const { 
     startSearching, 
@@ -83,10 +59,7 @@ export default function WatchPage() {
       strangerVideoRef as React.RefObject<HTMLVideoElement>
   );
 
-  // FIX: The dependency array is now just [profile]. The `!authLoading` check is removed.
   useEffect(() => {
-    // This effect now runs whenever the profile state changes.
-    // If the user is not logged in, profile will be null and this check will correctly fail.
     if (profile) {
       const isCurrentlyBanned = profile.banned_until && new Date(profile.banned_until) > new Date();
       const hasUnacknowledgedWarning = profile.violation_level === 1 && sessionStorage.getItem('warningAcknowledged') !== 'true';
@@ -193,9 +166,6 @@ export default function WatchPage() {
 
   const isEffectivelyMuted = isStrangerMuted || strangerVolume === 0
 
-  // FIX: This entire loading block is removed. The new pattern has no global auth loading state.
-  // The page will render immediately, and the logic now depends on whether `profile` is available.
-
   if (showViolationModal && profile) {
     return (
       <ViolationModal 
@@ -208,8 +178,11 @@ export default function WatchPage() {
   }
 
   return (
-    <div className={`${isSafari ? 'h-[89vh]' : 'h-screen'} bg-black flex flex-col relative overflow-hidden`}>
-      {/* ... rest of your JSX remains the same ... */}
+    // --- CHANGE START ---
+    // Replaced `h-screen` and the Safari-specific logic with `h-[100dvh]`.
+    // `dvh` stands for "dynamic viewport height" and correctly sizes the container
+    // to the visible area on mobile browsers, solving the layout issue.
+    <div className="h-[100dvh] bg-black flex flex-col relative overflow-hidden">
        <div className={`flex-1 flex-col lg:flex-row flex transition-all duration-300 ${chatOpen ? "pr-80" : ""}`}>
       <PartnerInfo profile={partnerProfile} />
       {isConnected && <Report onReport={handleReport} />}
