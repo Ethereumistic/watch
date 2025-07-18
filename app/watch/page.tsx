@@ -178,12 +178,11 @@ export default function WatchPage() {
   }
 
   return (
-    // --- CHANGE START ---
-    // Replaced `h-screen` and the Safari-specific logic with `h-[100dvh]`.
-    // `dvh` stands for "dynamic viewport height" and correctly sizes the container
-    // to the visible area on mobile browsers, solving the layout issue.
     <div className="h-[100dvh] bg-black flex flex-col relative overflow-hidden">
-       <div className={`flex-1 flex-col lg:flex-row flex transition-all duration-300 ${chatOpen ? "pr-80" : ""}`}>
+      {/* The main container for video feeds. `overflow-hidden` is added here. */}
+      {/* This prevents the flex children (VideoFeed components) from expanding this container */}
+      {/* beyond its calculated size, which solves the aspect-ratio layout shift issue. */}
+       <div className={`flex-1 flex-col lg:flex-row flex transition-all duration-300 overflow-hidden ${chatOpen ? "pr-80" : ""}`}>
       <PartnerInfo profile={partnerProfile} />
       {isConnected && <Report onReport={handleReport} />}
 
