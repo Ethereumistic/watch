@@ -47,10 +47,10 @@ export const VideoFeed = forwardRef<HTMLVideoElement, VideoFeedProps>(
           playsInline
           muted={isMuted}
         />
-        <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute inset-0 ">
           {children}
           {isRemote && !isConnected && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-b from-gray-900 to-black">
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-30">
               <div className="mt-4 text-center text-white">
                 {isSearching ? (
                   <div className="space-y-4">

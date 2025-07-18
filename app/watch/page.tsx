@@ -184,13 +184,13 @@ export default function WatchPage() {
       {/* beyond its calculated size, which solves the aspect-ratio layout shift issue. */}
        <div className={`flex-1 flex-col lg:flex-row flex transition-all duration-300 overflow-hidden ${chatOpen ? "pr-80" : ""}`}>
       <PartnerInfo profile={partnerProfile} />
-      {isConnected && <Report onReport={handleReport} />}
 
         <VideoFeed ref={strangerVideoRef} isMuted={isEffectivelyMuted} isConnected={isConnected} isSearching={isSearching} isRemote>
-        <Link href="/" className="z-50">
+        <Link href="/" className="z-[5001]">
           <Logo className="absolute left-2 lg:top-2 top-[88%] z-[5000]" />
           </Link>
-          
+          {isConnected && <Report onReport={handleReport} />}
+
           <VolumeControl
             volume={strangerVolume}
             isMuted={isEffectivelyMuted}

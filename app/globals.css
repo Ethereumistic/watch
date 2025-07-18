@@ -6,6 +6,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-gradient: var(--gradient);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -118,5 +119,21 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  /* Your original opaque gradient */
+  .bg-gradient {
+    @apply bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900;
+  }
+
+  .bg-gradient-pink {
+    @apply bg-gradient-to-r from-purple-600 to-pink-600;
+  }
+
+  /* Your new 30% opacity gradient */
+  .bg-gradient-30 {
+    @apply bg-gradient-to-br from-purple-900/50 via-blue-900/50 to-indigo-900/50;
   }
 }

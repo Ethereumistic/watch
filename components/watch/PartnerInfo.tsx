@@ -2,7 +2,7 @@
 
 import { Profile } from "@/stores/use-auth-store"
 import { calculateAge } from "@/lib/utils"
-import { User, Cake, VenetianMask, ChevronRight } from "lucide-react"
+import { User, Cake, VenetianMask, ChevronRight, Info } from "lucide-react"
 import { useEffect, useState } from "react"
 
 interface PartnerInfoProps {
@@ -36,11 +36,14 @@ export function PartnerInfo({ profile }: PartnerInfoProps) {
   return (
     // Repositioned for mobile using `top-4` and kept `lg:bottom-4` for desktop.
     // Removed the `group` class as we are no longer using hover.
-    <div className="absolute top-4 left-4 lg:bottom-4 z-10">
+    <div className="absolute top-2 left-0 lg:top-15 z-10">
       {/* This button is always visible and toggles the info card on click/tap. */}
       <button
         onClick={() => setInfoVisible(!isInfoVisible)}
-        className="absolute left-0 top-0 z-20 rounded-md bg-black/50 p-3 text-white shadow-lg backdrop-blur-sm transition-all duration-300 hover:bg-black/75"
+        className={`absolute left-0 top-0 z-20 rounded-tr-full rounded-br-full 
+                   p-1 text-white 
+                    transition-colors duration-900 
+                    ${isInfoVisible ? 'bg-transparent  ' : 'bg-gradient-30 shadow-lg backdrop-blur-sm'}`}
         aria-label="Toggle partner info"
       >
         {/* The chevron rotates to provide visual feedback of the card's state. */}
@@ -49,9 +52,9 @@ export function PartnerInfo({ profile }: PartnerInfoProps) {
 
       {/* The main info card's visibility is now controlled by the `isInfoVisible` state. */}
       <div
-        className={`z-10 min-w-[200px] rounded-lg bg-black/50 p-3 pl-16 text-white shadow-lg backdrop-blur-sm transition-all duration-500 ease-in-out ${
+        className={`z-10  rounded-tr-lg rounded-br-lg bg-gradient-30 p-3 pl-10 text-white text-shadow-lg shadow-lg backdrop-blur-xs transition-all duration-500 ease-in-out ${
           isInfoVisible
-            ? "translate-x-0 opacity-100"
+            ? "translate-x-0 opacity-100 "
             : "-translate-x-full opacity-0 pointer-events-none"
         }`}
       >

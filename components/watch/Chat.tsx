@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { X, Send } from "lucide-react"
+import { X, Send, ChevronRight } from "lucide-react"
 
 interface ChatMessage {
   id: string
@@ -35,7 +35,7 @@ export function Chat({ isOpen, onClose, messages, onSendMessage }: ChatProps) {
   }
 
   return (
-    <div className="absolute bg-gray-900 border-gray-700 transition-all duration-300 top-0 right-0 bottom-0 w-80 border-l">
+    <div className="absolute bg-gradient border-gray-700 transition-all duration-300 top-0 right-0 bottom-0 w-80 border-l">
       <div className="h-full flex flex-col">
         <div className="flex items-center justify-between p-4 border-b border-gray-700">
           <h3 className="text-white font-semibold">Chat</h3>
@@ -45,7 +45,7 @@ export function Chat({ isOpen, onClose, messages, onSendMessage }: ChatProps) {
             onClick={onClose}
             className="text-white hover:bg-gray-800 p-1 h-8 w-8"
           >
-            <X className="h-4 w-4" />
+            <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
 
@@ -55,7 +55,7 @@ export function Chat({ isOpen, onClose, messages, onSendMessage }: ChatProps) {
               <div key={message.id} className={`flex ${message.isUser ? "justify-end" : "justify-start"}`}>
                 <div
                   className={`max-w-xs px-3 py-2 rounded-lg text-sm ${
-                    message.isUser ? "bg-blue-600 text-white" : "bg-gray-700 text-white"
+                    message.isUser ? "bg-blue-600 text-white" : "bg-gradient-to-r from-pink-400 to-purple-400 text-white"
                   }`}
                 >
                   {message.text}

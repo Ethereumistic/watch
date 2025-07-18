@@ -29,10 +29,10 @@ export function DeviceSelectors({
   className,
 }: DeviceSelectorsProps) {
   return (
-    <div className={cn("absolute top-4 right-4 flex items-center space-x-2 pointer-events-auto", className)}>
+    <div className={cn("absolute top-2 right-2 flex items-center space-x-2 pointer-events-auto", className)}>
       <Select value={selectedCamera} onValueChange={onCameraChange}>
-        <SelectTrigger className="w-14 h-8 bg-black/50 backdrop-blur-sm border-none text-white">
-          <Camera className="h-4 w-4" />
+        <SelectTrigger className="w-14 h-8 bg-gradient-30 backdrop-blur-sm border-none ">
+          <Camera className="h-4 w-4 text-white" />
         </SelectTrigger>
         <SelectContent>
           {cameras.map((camera) => (
@@ -44,8 +44,8 @@ export function DeviceSelectors({
       </Select>
 
       <Select value={selectedMicrophone} onValueChange={onMicrophoneChange}>
-        <SelectTrigger className="w-14 h-10 bg-black/50 backdrop-blur-sm border-none text-white">
-          <Mic className="h-4 w-4" />
+        <SelectTrigger className="w-14 h-10 bg-gradient-30 backdrop-blur-sm border-none ">
+          <Mic className="h-4 w-4 text-white" />
         </SelectTrigger>
         <SelectContent>
           {microphones.map((mic) => (
@@ -58,8 +58,7 @@ export function DeviceSelectors({
 
       <Button
         size="sm"
-        variant="outline"
-        className="text-white hover:bg-white/20 bg-black/50 backdrop-blur-sm p-2 h-8 w-8"
+        className="text-white  bg-gradient-30 backdrop-blur-xs p-2 h-8 w-8"
         onClick={onMuteToggle}
       >
         {isMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
