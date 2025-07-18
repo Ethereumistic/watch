@@ -2,7 +2,6 @@
 
 import { forwardRef } from "react"
 import { Video } from "lucide-react"
-import { Logo } from "@/Logo"
 
 interface VideoFeedProps {
   isMuted?: boolean
@@ -33,9 +32,16 @@ export const VideoFeed = forwardRef<HTMLVideoElement, VideoFeedProps>(
     const showPermissionMessage = !isRemote && cameraPermission === "denied"
 
     return (
-      <div className="flex-1 relative border-r border-gray-700 bg-black">
+      // --- CHANGE START ---
+      // Removed `flex-1` and added explicit sizing for mobile and desktop.
+      // On mobile (default), it takes 50% of the height (`h-1/2`) and full width.
+      // On large screens (`lg:`), it takes 50% of the width (`lg:w-1/2`) and full height.
+      // This creates a strict boundary for the video element.
+      <div className="relative w-full h-1/2 lg:w-1/2 lg:h-full border-r border-gray-700 bg-black overflow-hidden">
         <video
           ref={ref}
+          // The `object-cover` will now fill the container which has a fixed 50% height on mobile,
+          // correctly cropping the video without breaking the layout.
           className={`w-full h-full object-cover ${isMirrored ? "scale-x-[-1]" : ""}`}
           autoPlay
           playsInline
