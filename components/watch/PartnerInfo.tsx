@@ -2,7 +2,7 @@
 
 import { Profile } from "@/stores/use-auth-store"
 import { calculateAge } from "@/lib/utils"
-import { User, Cake, VenetianMask, Info, ChevronRight } from "lucide-react"
+import { User, Cake, VenetianMask, ChevronRight } from "lucide-react"
 import { useEffect, useState } from "react"
 
 interface PartnerInfoProps {
@@ -10,16 +10,20 @@ interface PartnerInfoProps {
 }
 
 export function PartnerInfo({ profile }: PartnerInfoProps) {
-  const [isInitiallyHidden, setInitiallyHidden] = useState(false)
+  const [isInfoVisible, setInfoVisible] = useState(true)
 
+  // This effect controls the visibility of the info card.
+  // When a new partner connects, it shows the card for 7 seconds, then hides it.
   useEffect(() => {
     if (profile) {
-      setInitiallyHidden(false)
+      setInfoVisible(true)
       const timer = setTimeout(() => {
-        setInitiallyHidden(true)
+        setInfoVisible(false)
       }, 7000)
 
       return () => clearTimeout(timer)
+    } else {
+      setInfoVisible(false) // Ensure it's hidden when there's no partner
     }
   }, [profile])
 
@@ -30,29 +34,28 @@ export function PartnerInfo({ profile }: PartnerInfoProps) {
   const age = calculateAge(profile.dob)
 
   return (
-    <div className="group absolute lg:bottom-4 bottom-[91%] left-4 z-10">
-      <div
-        className={`absolute left-0 z-20 rounded-md bg-black/50 p-2 text-white shadow-lg backdrop-blur-sm transition-opacity duration-300 group-hover:opacity-0 ${
-          isInitiallyHidden ? "opacity-100 -translate-x-6" : "pointer-events-none opacity-0"
-        }`}
-        aria-label="Partner info"
+    // Repositioned for mobile using `top-4` and kept `lg:bottom-4` for desktop.
+    // Removed the `group` class as we are no longer using hover.
+    <div className="absolute top-4 left-4 lg:bottom-4 z-10">
+      {/* This button is always visible and toggles the info card on click/tap. */}
+      <button
+        onClick={() => setInfoVisible(!isInfoVisible)}
+        className="absolute left-0 top-0 z-20 rounded-md bg-black/50 p-3 text-white shadow-lg backdrop-blur-sm transition-all duration-300 hover:bg-black/75"
+        aria-label="Toggle partner info"
       >
-        <ChevronRight size={24} />
-      </div>
+        {/* The chevron rotates to provide visual feedback of the card's state. */}
+        <ChevronRight size={24} className={`transition-transform duration-300 ${isInfoVisible ? 'rotate-180' : 'rotate-0'}`} />
+      </button>
 
+      {/* The main info card's visibility is now controlled by the `isInfoVisible` state. */}
       <div
-        className={`z-10 rounded-lg bg-black/50 p-3 text-white shadow-lg backdrop-blur-sm transition-all duration-500 ease-in-out group-hover:translate-x-0 group-hover:opacity-100 group-hover:pointer-events-auto ${
-          !isInitiallyHidden
+        className={`z-10 min-w-[200px] rounded-lg bg-black/50 p-3 pl-16 text-white shadow-lg backdrop-blur-sm transition-all duration-500 ease-in-out ${
+          isInfoVisible
             ? "translate-x-0 opacity-100"
             : "-translate-x-full opacity-0 pointer-events-none"
         }`}
       >
         <div className="flex items-center gap-3">
-          {/* You can add an avatar here later if you want */}
-          {/* <Avatar>
-            <AvatarImage src={profile.avatar_url} />
-            <AvatarFallback>??</AvatarFallback>
-          </Avatar> */}
           <div>
             <h3 className="flex items-center gap-2 font-bold">
               <User size={16} />
