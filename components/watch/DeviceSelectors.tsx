@@ -44,7 +44,7 @@ export function DeviceSelectors({
       </Select>
 
       <Select value={selectedMicrophone} onValueChange={onMicrophoneChange}>
-        <SelectTrigger className="w-14 h-10 bg-gradient-30 backdrop-blur-sm border-none ">
+        <SelectTrigger className="w-14 h-8 hidden lg:flex bg-gradient-30 backdrop-blur-sm border-none ">
           <Mic className="h-4 w-4 text-white" />
         </SelectTrigger>
         <SelectContent>

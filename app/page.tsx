@@ -23,9 +23,9 @@ export default function Page() {
 
       {/* Main Content */}
       <main className="relative z-10 flex flex-col items-center justify-center min-h-[calc(100vh-200px)] px-6 text-center">
-        <div className="max-w-4xl mx-auto space-y-8">
+        <div className="max-w-4xl mx-auto space-y-8 mt-20">
           {/* Hero Section */}
-          <div className="space-y-6">
+          <div className="lg:space-y-6 space-y-0">
             <h1 className="text-5xl md:text-7xl font-bold text-white leading-tight">
               Connect, <span className="bg-gradient-to-r from-pink-400 to-purple-400 bg-clip-text text-transparent"> Watch</span>, Match
               
@@ -37,7 +37,7 @@ export default function Page() {
           </div>
 
           {/* Feature highlights */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 my-12">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 lg:my-12 my-6">
             <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-white/20">
               <Users className="w-8 h-8 text-purple-400 mx-auto mb-2" />
               <p className="text-white/80 text-sm">Smart Matching</p>
