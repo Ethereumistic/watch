@@ -27,7 +27,7 @@ export default function Page() {
           {/* Hero Section */}
           <div className="lg:space-y-6 space-y-0">
             <h1 className="text-5xl md:text-7xl font-bold text-white leading-tight">
-              Connect, <span className="bg-gradient-to-r from-pink-400 to-purple-400 bg-clip-text text-transparent"> Watch</span>, Match
+              Connect, <span className="bg-gradient-to-r from-pink-400 to-purple-400 bg-clip-text text-transparent"> Watch</span>, Match!
               
             </h1>
             <p className="text-xl md:text-2xl text-white/80 max-w-2xl mx-auto leading-relaxed">
