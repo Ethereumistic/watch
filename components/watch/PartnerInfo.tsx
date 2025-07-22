@@ -2,20 +2,21 @@
 
 import { Profile } from "@/stores/use-auth-store"
 import { calculateAge } from "@/lib/utils"
-import { User, Cake, VenetianMask, ChevronRight, Info } from "lucide-react"
+import { User, Cake, VenetianMask, ChevronRight } from "lucide-react"
 import { useEffect, useState } from "react"
 
 interface PartnerInfoProps {
   profile: Omit<Profile, "id"> | null
+  partnerId: string | null
 }
 
-export function PartnerInfo({ profile }: PartnerInfoProps) {
-  const [isInfoVisible, setInfoVisible] = useState(true)
+export function PartnerInfo({ profile, partnerId }: PartnerInfoProps) {
+  const [isInfoVisible, setInfoVisible] = useState(false)
 
-  // This effect controls the visibility of the info card.
-  // When a new partner connects, it shows the card for 7 seconds, then hides it.
+  // This effect correctly controls the visibility of the info card.
+  // It triggers only when the partner connection state changes.
   useEffect(() => {
-    if (profile) {
+    if (partnerId) {
       setInfoVisible(true)
       const timer = setTimeout(() => {
         setInfoVisible(false)
@@ -25,36 +26,32 @@ export function PartnerInfo({ profile }: PartnerInfoProps) {
     } else {
       setInfoVisible(false) // Ensure it's hidden when there's no partner
     }
-  }, [profile])
+  }, [partnerId])
 
-  if (!profile) {
+  // Render nothing if there is no partner or profile data.
+  if (!partnerId || !profile) {
     return null
   }
 
   const age = calculateAge(profile.dob)
 
   return (
-    // Repositioned for mobile using `top-4` and kept `lg:bottom-4` for desktop.
-    // Removed the `group` class as we are no longer using hover.
-    <div className="absolute top-2 left-0 lg:top-15 z-10">
-      {/* This button is always visible and toggles the info card on click/tap. */}
+    <div className="absolute top-4 left-0 lg:top-4 z-[5001]">
       <button
         onClick={() => setInfoVisible(!isInfoVisible)}
         className={`absolute left-0 top-0 z-20 rounded-tr-full rounded-br-full 
                    p-1 text-white 
                     transition-colors duration-900 
-                    ${isInfoVisible ? 'bg-transparent  ' : 'bg-gradient-30 shadow-lg backdrop-blur-sm'}`}
+                    ${isInfoVisible ? 'bg-transparent' : 'bg-gradient-30 shadow-lg backdrop-blur-sm'}`}
         aria-label="Toggle partner info"
       >
-        {/* The chevron rotates to provide visual feedback of the card's state. */}
         <ChevronRight size={24} className={`transition-transform duration-300 ${isInfoVisible ? 'rotate-180' : 'rotate-0'}`} />
       </button>
 
-      {/* The main info card's visibility is now controlled by the `isInfoVisible` state. */}
       <div
-        className={`z-10  rounded-tr-lg rounded-br-lg bg-gradient-30 p-3 pl-10 text-white text-shadow-lg shadow-lg backdrop-blur-xs transition-all duration-500 ease-in-out ${
+        className={`z-10 rounded-tr-lg rounded-br-lg bg-gradient-30 p-3 pl-10 text-white text-shadow-lg shadow-lg backdrop-blur-xs transition-all duration-500 ease-in-out ${
           isInfoVisible
-            ? "translate-x-0 opacity-100 "
+            ? "translate-x-0 opacity-100"
             : "-translate-x-full opacity-0 pointer-events-none"
         }`}
       >
@@ -65,7 +62,7 @@ export function PartnerInfo({ profile }: PartnerInfoProps) {
               <span>{profile.username || "Stranger"}</span>
             </h3>
             <div className="mt-1 flex items-center gap-4 text-sm text-gray-300">
-              {age && (
+              {age > 0 && (
                 <span className="flex items-center gap-1">
                   <Cake size={14} />
                   {age}

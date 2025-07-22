@@ -23,6 +23,7 @@ export function useWebRTC(
   const socketRef = useRef<WebSocket | null>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const onOpenActions = useRef<(() => void)[]>([]);
   
   // Use a ref to hold all handlers to prevent stale closures in the onmessage callback.
   const handlersRef = useRef<any>({});
@@ -109,7 +110,7 @@ export function useWebRTC(
     handlersRef.current.handleMatchFound = async (payload: { opponentId: string; role: 'polite' | 'impolite'; iceServers: RTCConfiguration['iceServers'] }) => {
       const { opponentId, role, iceServers } = payload;
       console.log(`Match found with ${opponentId}. My role: ${role}.`);
-      cleanupConnection();
+      cleanupConnection(); // <-- MOVED HERE
       setPartnerId(opponentId);
       const pc = createPeerConnection(iceServers, opponentId);
       setIsSearching(false);
@@ -177,11 +178,18 @@ export function useWebRTC(
   }, [cleanupConnection, createPeerConnection, sendSignal]);
 
 
-  // --- WEBSOCKET LIFECYCLE ---
+  // --- WEBSOCKET LIFECYCLE & ACTION QUEUE ---
   const connectToSignalingServer = useCallback(() => {
     const token = session?.access_token;
-    if (!token) { console.error("No auth token found."); return; }
-    if (socketRef.current) { console.log("Socket already exists."); return; }
+    if (!token) { 
+      console.error("No auth token found."); 
+      return; 
+    }
+    // Prevent creating a new socket if one already exists or is connecting
+    if (socketRef.current && socketRef.current.readyState !== WebSocket.CLOSED) {
+      console.log("Socket already exists or is connecting.");
+      return;
+    }
 
     const wsUrl = process.env.NEXT_PUBLIC_SIGNALING_URL || "ws://localhost:3003";
     console.log(`Connecting to signaling server at: ${wsUrl}`);
@@ -191,8 +199,9 @@ export function useWebRTC(
     newSocket.onopen = () => {
       console.log("✅ WebSocket connection opened.");
       setIsSocketConnected(true);
-      setIsSearching(true);
-      sendSignal("start-search", {});
+      // Process any queued actions
+      onOpenActions.current.forEach(action => action());
+      onOpenActions.current = []; // Clear the queue
     };
 
     newSocket.onclose = () => {
@@ -227,12 +236,25 @@ export function useWebRTC(
         console.error("Failed to parse incoming message:", event.data, e);
       }
     };
-  }, [session, cleanupConnection, sendSignal]);
+  }, [session, cleanupConnection]);
+
+  const executeWhenConnected = useCallback((action: () => void) => {
+    if (socketRef.current?.readyState === WebSocket.OPEN) {
+      action();
+    } else {
+      onOpenActions.current.push(action);
+      // If not connected or connecting, initiate connection.
+      if (!socketRef.current || socketRef.current.readyState === WebSocket.CLOSED) {
+        connectToSignalingServer();
+      }
+    }
+  }, [connectToSignalingServer]);
 
   // --- MEDIA DEVICE MANAGEMENT ---
   useEffect(() => {
     const getDevices = async () => {
       try {
+        // We need to request permission first to be able to enumerate devices
         await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         const devices = await navigator.mediaDevices.enumerateDevices();
         const videoDevices = devices.filter((d) => d.kind === "videoinput");
@@ -256,6 +278,7 @@ export function useWebRTC(
   useEffect(() => {
     const getMediaStream = async () => {
       if (selectedCamera && selectedMicrophone) {
+        // Stop previous stream tracks before getting a new one
         localStreamRef.current?.getTracks().forEach((track) => track.stop());
         try {
           const stream = await navigator.mediaDevices.getUserMedia({
@@ -276,25 +299,24 @@ export function useWebRTC(
 
   // --- USER ACTIONS ---
   const startSearching = useCallback(() => {
-    if (!socketRef.current || socketRef.current.readyState === WebSocket.CLOSED) {
-      connectToSignalingServer();
-    } else if (socketRef.current.readyState === WebSocket.OPEN) {
+    executeWhenConnected(() => {
       setIsSearching(true);
       sendSignal("start-search", {});
-    }
-  }, [connectToSignalingServer, sendSignal]);
+    });
+  }, [executeWhenConnected, sendSignal]);
 
   const stopSearching = useCallback(() => {
     if (socketRef.current) {
       sendSignal("stop-search", {});
-      socketRef.current.close();
+      socketRef.current.close(); // This will trigger the onclose handler for cleanup
     }
     cleanupConnection();
   }, [cleanupConnection, sendSignal]);
   
   const skipChat = useCallback(() => {
+    // A skip is effectively a stop followed by an immediate start
     stopSearching();
-    setTimeout(() => startSearching(), 100);
+    setTimeout(() => startSearching(), 100); // Small delay to allow cleanup
   }, [startSearching, stopSearching]);
 
   const sendMessage = useCallback((text: string) => {
@@ -328,7 +350,14 @@ export function useWebRTC(
     console.log("Report sent. Skipping to next chat.");
     // Immediately skip to the next user after sending the report.
     skipChat();
-  }, [partnerId, partnerProfile, sendSignal, skipChat]);
+  }, [partnerId, sendSignal, skipChat]);
+
+  const notifySettingsChanged = useCallback((settingsPayload: any) => {
+    executeWhenConnected(() => {
+      console.log("Notifying backend of settings change:", settingsPayload);
+      sendSignal('settings-updated', settingsPayload);
+    });
+  }, [executeWhenConnected, sendSignal]);
 
   // --- RETURN ---
   return {
@@ -349,7 +378,8 @@ export function useWebRTC(
     setSelectedMicrophone,
     sendMessage,
     chatMessages,
-    localStream: localStreamRef.current,
+    localStreamRef,
     sendReport,
+    notifySettingsChanged,
   };
 }

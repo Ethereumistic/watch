@@ -13,6 +13,8 @@ import Link from "next/link"
 import { Report } from "@/components/watch/Report"
 import { useAuthStore } from "@/stores/use-auth-store"
 import { ViolationModal } from "@/components/watch/ViolationModal"
+import { SettingsModal } from "@/components/watch/SettingsModal";
+import { updateProfileSettings } from "@/lib/actions";
 
 interface ChatMessage {
   id: string
@@ -27,9 +29,11 @@ export default function WatchPage() {
   const [isUserMuted, setIsUserMuted] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
   const [unreadMessages, setUnreadMessages] = useState(0)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [searchStartTime, setSearchStartTime] = useState<number | null>(null);
 
   const [showViolationModal, setShowViolationModal] = useState(false);
-  const { profile } = useAuthStore();
+  const { profile, session, setProfile } = useAuthStore();
 
   const strangerVideoRef = useRef<HTMLVideoElement>(null)
   const userVideoRef = useRef<HTMLVideoElement>(null)
@@ -53,11 +57,37 @@ export default function WatchPage() {
     sendMessage,
     chatMessages,
     localStream,
-    sendReport, // FIX: Destructure the new sendReport function
+    sendReport,
+    notifySettingsChanged,
   } = useWebRTC(
       userVideoRef as React.RefObject<HTMLVideoElement>, 
       strangerVideoRef as React.RefObject<HTMLVideoElement>
   );
+
+  useEffect(() => {
+    if (isSearching && !searchStartTime) {
+      setSearchStartTime(Date.now());
+    } else if (!isSearching && searchStartTime) {
+      setSearchStartTime(null);
+    }
+  }, [isSearching, searchStartTime]);
+
+  const handleSaveSettings = async (payload: any) => {
+    if (!session?.user.id) {
+      console.error("User not authenticated. Cannot save settings.");
+      return;
+    }
+    const { data: updatedProfile, error } = await updateProfileSettings(session.user.id, payload);
+    
+    if (error) {
+      console.error("Failed to save settings:", error);
+    } else if (updatedProfile) {
+      // On successful save, update the global state
+      setProfile(updatedProfile);
+      // And notify the backend to update its cache.
+      notifySettingsChanged(payload);
+    }
+  };
 
   useEffect(() => {
     if (profile) {
@@ -84,7 +114,6 @@ export default function WatchPage() {
   };
 
   const handleReport = async () => {
-    // FIX: Use the new sendReport function from the hook
     if (!strangerVideoRef.current || !partnerId || !sendReport) {
       console.error("Cannot report: No partner connected or report function not available.");
       return;
@@ -104,7 +133,6 @@ export default function WatchPage() {
     canvas.toBlob(async (blob) => {
       if (blob) {
         const screenshotBuffer = await blob.arrayBuffer();
-        // Call the new function from the hook
         sendReport({ 
           screenshot: screenshotBuffer,
           chatLog: { messages: recentMessages }
@@ -181,11 +209,18 @@ export default function WatchPage() {
   return (
     <div className="h-[100dvh] bg-black flex flex-col relative overflow-hidden">
       <div className={`flex-1 flex-col lg:flex-row flex transition-all duration-300 overflow-hidden ${chatOpen ? "pr-80" : ""}`}>
-      <PartnerInfo profile={partnerProfile} />
-
-        <VideoFeed ref={strangerVideoRef} isMuted={isEffectivelyMuted} isConnected={isConnected} isSearching={isSearching} isRemote>
-        <Link href="/" className="z-[5001]">
-          <Logo className="absolute left-2 lg:top-2 top-[88%] z-[5000]" />
+        <VideoFeed 
+          ref={strangerVideoRef} 
+          isMuted={isEffectivelyMuted} 
+          isConnected={isConnected} 
+          isSearching={isSearching} 
+          isRemote
+          profile={profile}
+          searchStartTime={searchStartTime}
+        >
+          <PartnerInfo profile={partnerProfile} partnerId={partnerId} />
+          <Link href="/" className="z-10">
+            <Logo className="absolute left-2 lg:top-2 top-[88%]" />
           </Link>
           {isConnected && <Report onReport={handleReport} />}
 
@@ -202,7 +237,6 @@ export default function WatchPage() {
           <DeviceSelectors
             cameras={availableCameras}
             microphones={availableMicrophones}
-            // FIX: Handle undefined state to prevent Radix error
             selectedCamera={selectedCamera || ''}
             selectedMicrophone={selectedMicrophone || ''}
             isMuted={isUserMuted}
@@ -225,6 +259,7 @@ export default function WatchPage() {
             setUnreadMessages(0)
           }
         }}
+        onToggleSettings={() => setIsSettingsOpen(true)}
         isCameraReady={isCameraReady}
         unreadMessages={unreadMessages}
       />
@@ -234,6 +269,12 @@ export default function WatchPage() {
         onClose={() => setChatOpen(false)}
         messages={chatMessages}
         onSendMessage={sendMessage}
+      />
+      
+      <SettingsModal 
+        isOpen={isSettingsOpen} 
+        onOpenChange={setIsSettingsOpen}
+        onSave={handleSaveSettings} 
       />
     </div>
   )

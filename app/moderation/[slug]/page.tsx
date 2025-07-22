@@ -83,28 +83,42 @@ function ReportDetailPage() {
   useEffect(() => {
     if (!reportId) return;
 
-    const fetchReport = async () => {
+    const fetchReportAndUrl = async () => {
       setIsLoading(true);
       setError(null);
-      
-      const { data, error: reportError } = await supabase.functions.invoke('get-report-details', { body: { reportId } });
-      
-      if (reportError || !data) {
+      setSignedImageUrl(null); // Reset on new report load
+
+      // 1. Fetch the main report details
+      const { data: reportData, error: reportError } = await supabase.functions.invoke('get-report-details', { body: { reportId } });
+
+      if (reportError || !reportData) {
         setError("Report not found or failed to load.");
         setIsLoading(false);
         return;
       }
-      
-      const fullReport = data as FullReport;
+
+      const fullReport = reportData as FullReport;
       setReport(fullReport);
       setStatus(fullReport.status);
-      // The evidence_url from the report IS the signed URL.
-      // No need to fetch another one.
-      setSignedImageUrl(fullReport.evidence_url);
+
+      // 2. If the report has an evidence path, get the signed URL for it
+      if (fullReport.evidence_url) {
+        const { data: urlData, error: urlError } = await supabase.functions.invoke('get-signed-evidence-url', {
+          body: { filePath: fullReport.evidence_url }
+        });
+
+        if (urlError) {
+          console.error("Failed to get signed URL for evidence:", urlError);
+          // Keep the report data but show an image error
+        } else {
+          setSignedImageUrl(urlData.signedUrl);
+        }
+      }
       
       setIsLoading(false);
     };
-    fetchReport();
+
+    fetchReportAndUrl();
   }, [reportId]);
 
   const handleTakeAction = async () => {
