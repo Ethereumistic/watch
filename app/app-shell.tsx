@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { Navbar } from "@/components/layout/navbar";
 import { LogIn } from "@/components/auth/log-in";
-import SupabaseAuthListener from "@/components/auth/supabase-auth-listener";
+import { SupabaseAuthListener } from "@/components/auth/supabase-auth-listener";
 import { AuthStoreInitializer } from "@/components/auth/auth-store-initializer"; // Import the initializer
 import { Session } from "@supabase/supabase-js";
 import { Profile } from "@/stores/use-auth-store";

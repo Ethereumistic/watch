@@ -1,63 +1,63 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useRef, useCallback } from "react"
+import { useAuthStore } from "@/stores/use-auth-store"
 import { createClient } from "@/lib/supabase/client"
-import { useAuthStore, Profile } from "@/stores/use-auth-store"
 
-export default function SupabaseAuthListener() {
+export function SupabaseAuthListener({ serverSession }: { serverSession: any }) {
+  const { setSession, setProfile } = useAuthStore()
   const supabase = createClient()
-  const { setSession, fetchUserProfile, setProfile } = useAuthStore()
+  const countryUpdatedSessionId = useRef<string | null>(null);
 
-  // Real-time auth state change listener
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        // Get the most up-to-date profile from the store *inside* the callback
-        // This avoids stale closures and ensures we are comparing against the current state.
-        const currentProfile = useAuthStore.getState().profile;
-        const newUserId = session?.user?.id;
-
-        // Set the session on every auth event. This keeps the user object in sync.
-        setSession(session);
-
-        // If a new user has logged in (their ID is different from the current profile ID),
-        // fetch their profile data.
-        if (newUserId && newUserId !== currentProfile?.id) {
-          await fetchUserProfile(session!.user);
-        } 
-        // If the session has become null, it means the user has signed out.
-        // Clear the profile from the store.
-        else if (!newUserId && currentProfile) {
-          setProfile(null);
-        }
+  // This function calls the 'update-country' edge function to reliably update
+  // the user's country and IP address based on the request headers.
+  const updateUserCountryAndIp = useCallback(async (userId: string) => {
+    try {
+      console.log(`Invoking 'update-country' for user: ${userId}`);
+      const { error } = await supabase.functions.invoke('update-country', {
+        body: { userId },
+      });
+      if (error) {
+        throw error;
       }
-    )
-
-    return () => {
-      subscription.unsubscribe()
+      console.log(`Successfully invoked 'update-country' for user: ${userId}`);
+    } catch (error) {
+      console.error("Error updating user country and IP:", error);
     }
-  }, [setSession, fetchUserProfile, setProfile, supabase])
+  }, [supabase]);
 
-  // Real-time profile updates listener (no changes needed here)
   useEffect(() => {
-    const currentUserId = useAuthStore.getState().profile?.id;
-    if (!currentUserId) return;
-
-    const channel = supabase.channel(`profile-updates:${currentUserId}`)
-      .on<Profile>(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${currentUserId}` },
-        (payload) => {
-          // Use setProfile to update the store with the latest data from the database.
-          setProfile(payload.new as Profile);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
+    // This runs once on mount. If we have a server session, we set it in the
+    // store and trigger the country update.
+    if (serverSession && countryUpdatedSessionId.current !== serverSession.user.id) {
+      setSession(serverSession);
+      updateUserCountryAndIp(serverSession.user.id);
+      countryUpdatedSessionId.current = serverSession.user.id;
     }
-  }, [setProfile, supabase]);
+
+    // We listen for auth changes.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setSession(session);
+      
+      // On a new sign-in, we update the country. We use a ref to prevent
+      // this from running on every auth event for the same session (e.g., token refresh).
+      if (event === "SIGNED_IN" && session && countryUpdatedSessionId.current !== session.user.id) {
+        updateUserCountryAndIp(session.user.id);
+        countryUpdatedSessionId.current = session.user.id;
+      }
+
+      // If the user signs out, we clear the profile and reset our tracking ref.
+      if (event === "SIGNED_OUT") {
+        setProfile(null);
+        countryUpdatedSessionId.current = null;
+      }
+    });
+
+    // Cleanup the subscription on unmount.
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [serverSession, setSession, setProfile, supabase.auth, updateUserCountryAndIp]);
 
   return null
 }

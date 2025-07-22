@@ -25,19 +25,24 @@ Deno.serve(async (req) => {
       throw new Error("Missing required fields.");
     }
 
-    // FIX: Fetch the reported user's profile to get their IP address
-    const { data: profileData, error: profileError } = await supabaseAdmin
-      .from('profiles')
-      .select('user_ip') // Select only the IP address
-      .eq('id', reportedUserId)
-      .single();
+  // Log the ID you're receiving to make sure it's correct
+  console.log(`Fetching profile for reportedUserId: ${reportedUserId}`);
 
-    if (profileError) {
-      console.error(`Could not fetch profile for user ${reportedUserId}:`, profileError);
-      // Proceed without IP if profile not found, but log the error
-    }
-    
-    const reportedUserIp = profileData?.user_ip || null;
+  const { data: profileData, error: profileError } = await supabaseAdmin
+  .from('profiles')
+  .select('user_ip') // Select the id too, for confirmation
+  .eq('id', reportedUserId)
+  .single();
+
+if (profileError) {
+  throw new Error(`Failed to fetch profile. Reason: ${profileError.message}`);
+}
+
+// 💡 ADD THIS LOG
+// This will print the object fetched from the database to your function's logs.
+console.log('Successfully fetched profile data:', profileData);
+
+const reportedUserIp = profileData?.user_ip;
     
     const caseId = crypto.randomUUID();
     const filePath = `${reportedUserId}/${caseId}.jpeg`; 

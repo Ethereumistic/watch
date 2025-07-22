@@ -52,8 +52,8 @@ export default function WatchPage() {
     setSelectedMicrophone, 
     sendMessage,
     chatMessages,
-    socket,
-    localStream
+    localStream,
+    sendReport, // FIX: Destructure the new sendReport function
   } = useWebRTC(
       userVideoRef as React.RefObject<HTMLVideoElement>, 
       strangerVideoRef as React.RefObject<HTMLVideoElement>
@@ -84,8 +84,9 @@ export default function WatchPage() {
   };
 
   const handleReport = async () => {
-    if (!strangerVideoRef.current || !partnerId || !socket) {
-      console.error("Cannot report: No partner connected or socket not available.");
+    // FIX: Use the new sendReport function from the hook
+    if (!strangerVideoRef.current || !partnerId || !sendReport) {
+      console.error("Cannot report: No partner connected or report function not available.");
       return;
     }
   
@@ -103,8 +104,8 @@ export default function WatchPage() {
     canvas.toBlob(async (blob) => {
       if (blob) {
         const screenshotBuffer = await blob.arrayBuffer();
-        socket.emit('initiate-report', { 
-          partnerId, 
+        // Call the new function from the hook
+        sendReport({ 
           screenshot: screenshotBuffer,
           chatLog: { messages: recentMessages }
         });
@@ -179,10 +180,7 @@ export default function WatchPage() {
 
   return (
     <div className="h-[100dvh] bg-black flex flex-col relative overflow-hidden">
-      {/* The main container for video feeds. `overflow-hidden` is added here. */}
-      {/* This prevents the flex children (VideoFeed components) from expanding this container */}
-      {/* beyond its calculated size, which solves the aspect-ratio layout shift issue. */}
-       <div className={`flex-1 flex-col lg:flex-row flex transition-all duration-300 overflow-hidden ${chatOpen ? "pr-80" : ""}`}>
+      <div className={`flex-1 flex-col lg:flex-row flex transition-all duration-300 overflow-hidden ${chatOpen ? "pr-80" : ""}`}>
       <PartnerInfo profile={partnerProfile} />
 
         <VideoFeed ref={strangerVideoRef} isMuted={isEffectivelyMuted} isConnected={isConnected} isSearching={isSearching} isRemote>
@@ -204,8 +202,9 @@ export default function WatchPage() {
           <DeviceSelectors
             cameras={availableCameras}
             microphones={availableMicrophones}
-            selectedCamera={selectedCamera}
-            selectedMicrophone={selectedMicrophone}
+            // FIX: Handle undefined state to prevent Radix error
+            selectedCamera={selectedCamera || ''}
+            selectedMicrophone={selectedMicrophone || ''}
             isMuted={isUserMuted}
             onCameraChange={setSelectedCamera}
             onMicrophoneChange={setSelectedMicrophone}

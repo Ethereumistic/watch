@@ -98,12 +98,9 @@ function ReportDetailPage() {
       const fullReport = data as FullReport;
       setReport(fullReport);
       setStatus(fullReport.status);
-      
-      if (fullReport.evidence_url) {
-        const { data: signedUrlData, error: signedUrlError } = await supabase.functions.invoke('get-signed-evidence-url', { body: { filePath: fullReport.evidence_url } });
-        if (signedUrlError) console.error("Error getting signed URL:", signedUrlError);
-        else setSignedImageUrl(signedUrlData.signedUrl);
-      }
+      // The evidence_url from the report IS the signed URL.
+      // No need to fetch another one.
+      setSignedImageUrl(fullReport.evidence_url);
       
       setIsLoading(false);
     };
