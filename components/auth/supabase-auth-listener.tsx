@@ -5,7 +5,7 @@ import { useAuthStore } from "@/stores/use-auth-store"
 import { createClient } from "@/lib/supabase/client"
 
 export function SupabaseAuthListener({ serverSession }: { serverSession: any }) {
-  const { setSession, setProfile } = useAuthStore()
+  const { setSession, setProfile, fetchUserProfile } = useAuthStore()
   const supabase = createClient()
   const countryUpdatedSessionId = useRef<string | null>(null);
 
@@ -38,6 +38,11 @@ export function SupabaseAuthListener({ serverSession }: { serverSession: any }) 
     // We listen for auth changes.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
+
+      // If we have a session, fetch the associated profile to keep it in sync.
+      if (session?.user) {
+        fetchUserProfile(session.user);
+      }
       
       // On a new sign-in, we update the country. We use a ref to prevent
       // this from running on every auth event for the same session (e.g., token refresh).
@@ -57,7 +62,7 @@ export function SupabaseAuthListener({ serverSession }: { serverSession: any }) 
     return () => {
       subscription.unsubscribe();
     };
-  }, [serverSession, setSession, setProfile, supabase.auth, updateUserCountryAndIp]);
+  }, [serverSession, setSession, setProfile, supabase.auth, updateUserCountryAndIp, fetchUserProfile]);
 
   return null
 }

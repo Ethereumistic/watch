@@ -31,9 +31,10 @@ export default function WatchPage() {
   const [unreadMessages, setUnreadMessages] = useState(0)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [searchStartTime, setSearchStartTime] = useState<number | null>(null);
+  const [isInitialSetup, setIsInitialSetup] = useState(false);
 
   const [showViolationModal, setShowViolationModal] = useState(false);
-  const { profile, session, setProfile } = useAuthStore();
+  const { profile, session, setProfile, isInitialized } = useAuthStore();
 
   const strangerVideoRef = useRef<HTMLVideoElement>(null)
   const userVideoRef = useRef<HTMLVideoElement>(null)
@@ -86,8 +87,24 @@ export default function WatchPage() {
       setProfile(updatedProfile);
       // And notify the backend to update its cache.
       notifySettingsChanged(payload);
+       // If this was the initial setup, mark it as complete.
+      if (isInitialSetup) {
+        setIsInitialSetup(false);
+      }
     }
   };
+
+  useEffect(() => {
+    // Once the auth store is initialized, check if the user needs to complete their profile.
+    if (isInitialized && profile) {
+      const needsSetup = !profile.username || !profile.dob || !profile.gender;
+      if (needsSetup) {
+        setIsInitialSetup(true);
+        setIsSettingsOpen(true);
+      }
+    }
+  }, [profile, isInitialized]);
+
 
   useEffect(() => {
     if (profile) {
@@ -274,7 +291,8 @@ export default function WatchPage() {
       <SettingsModal 
         isOpen={isSettingsOpen} 
         onOpenChange={setIsSettingsOpen}
-        onSave={handleSaveSettings} 
+        onSave={handleSaveSettings}
+        isInitialSetup={isInitialSetup}
       />
     </div>
   )

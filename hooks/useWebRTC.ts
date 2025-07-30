@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { useAuthStore, Profile } from "@/stores/use-auth-store";
+import { useAuthStore, PartnerProfile } from "@/stores/use-auth-store";
 
 // --- TYPES ---
 interface ChatMessage {
@@ -10,27 +10,22 @@ interface ChatMessage {
   isUser: boolean;
   timestamp: Date;
 }
-// The profile now includes the user's IP, received from the server
-type PartnerProfile = (Omit<Profile, "id"> & { user_ip?: string }) | null;
-
 
 // --- HOOK ---
 export function useWebRTC(
   localVideoRef: React.RefObject<HTMLVideoElement>,
   remoteVideoRef: React.RefObject<HTMLVideoElement>
 ) {
-  const { session } = useAuthStore();
+  const { session, setPartnerProfile } = useAuthStore();
   const socketRef = useRef<WebSocket | null>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const onOpenActions = useRef<(() => void)[]>([]);
   
-  // Use a ref to hold all handlers to prevent stale closures in the onmessage callback.
   const handlersRef = useRef<any>({});
 
   const [isSocketConnected, setIsSocketConnected] = useState(false);
   const [partnerId, setPartnerId] = useState<string | null>(null);
-  const [partnerProfile, setPartnerProfile] = useState<PartnerProfile>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [hasCamera, setHasCamera] = useState(true);
   const [cameraPermission, setCameraPermission] = useState<"prompt" | "granted" | "denied">("prompt");
@@ -51,8 +46,8 @@ export function useWebRTC(
   }, []);
 
   // --- CONNECTION CLEANUP ---
-  const cleanupConnection = useCallback(() => {
-    console.log("[CLEANUP] Cleaning up peer connection.");
+  const resetPeerConnection = useCallback(() => {
+    console.log("[RESET] Resetting peer connection for new partner.");
     if (peerConnectionRef.current) {
       peerConnectionRef.current.onicecandidate = null;
       peerConnectionRef.current.ontrack = null;
@@ -63,10 +58,16 @@ export function useWebRTC(
     if (remoteVideoRef.current) {
       remoteVideoRef.current.srcObject = null;
     }
-    setPartnerId(null);
-    setPartnerProfile(null);
     setChatMessages([]);
   }, [remoteVideoRef]);
+
+  const endChatSession = useCallback(() => {
+    console.log("[END] Ending chat session completely.");
+    resetPeerConnection();
+    setPartnerId(null);
+    setPartnerProfile(null);
+  }, [resetPeerConnection, setPartnerProfile]);
+
 
   // --- PEER CONNECTION MANAGEMENT ---
   const createPeerConnection = useCallback((iceServers: RTCConfiguration['iceServers'], currentPartnerId: string) => {
@@ -105,12 +106,11 @@ export function useWebRTC(
   }, [sendSignal, remoteVideoRef]);
 
   // --- SIGNALING HANDLERS ---
-  // We wrap these in a useEffect to ensure the ref always has the latest functions.
   useEffect(() => {
     handlersRef.current.handleMatchFound = async (payload: { opponentId: string; role: 'polite' | 'impolite'; iceServers: RTCConfiguration['iceServers'] }) => {
       const { opponentId, role, iceServers } = payload;
       console.log(`Match found with ${opponentId}. My role: ${role}.`);
-      cleanupConnection(); // <-- MOVED HERE
+      resetPeerConnection(); // Use the lightweight reset
       setPartnerId(opponentId);
       const pc = createPeerConnection(iceServers, opponentId);
       setIsSearching(false);
@@ -164,18 +164,18 @@ export function useWebRTC(
     };
 
     handlersRef.current.handlePartnerProfile = (payload: { profile: PartnerProfile }) => {
-      console.log("CLIENT: Received partner profile:", payload.profile); // <-- MODIFY THIS LOG
+      console.log("CLIENT: Received partner profile:", payload.profile);
       setPartnerProfile(payload.profile);
     };
 
     handlersRef.current.handlePartnerDisconnected = () => {
       console.log("Partner disconnected. Cleaning up and starting a new search.");
-      cleanupConnection();
+      endChatSession();
       setIsSearching(true);
       sendSignal("start-search", {});
     };
 
-  }, [cleanupConnection, createPeerConnection, sendSignal]);
+  }, [resetPeerConnection, endChatSession, createPeerConnection, sendSignal, setPartnerProfile]);
 
 
   // --- WEBSOCKET LIFECYCLE & ACTION QUEUE ---
@@ -185,7 +185,6 @@ export function useWebRTC(
       console.error("No auth token found."); 
       return; 
     }
-    // Prevent creating a new socket if one already exists or is connecting
     if (socketRef.current && socketRef.current.readyState !== WebSocket.CLOSED) {
       console.log("Socket already exists or is connecting.");
       return;
@@ -199,9 +198,8 @@ export function useWebRTC(
     newSocket.onopen = () => {
       console.log("✅ WebSocket connection opened.");
       setIsSocketConnected(true);
-      // Process any queued actions
       onOpenActions.current.forEach(action => action());
-      onOpenActions.current = []; // Clear the queue
+      onOpenActions.current = [];
     };
 
     newSocket.onclose = () => {
@@ -209,7 +207,7 @@ export function useWebRTC(
       socketRef.current = null;
       setIsSocketConnected(false);
       setIsSearching(false);
-      cleanupConnection();
+      endChatSession();
     };
 
     newSocket.onerror = (error) => console.error("WebSocket Error:", error);
@@ -236,14 +234,13 @@ export function useWebRTC(
         console.error("Failed to parse incoming message:", event.data, e);
       }
     };
-  }, [session, cleanupConnection]);
+  }, [session, endChatSession]);
 
   const executeWhenConnected = useCallback((action: () => void) => {
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       action();
     } else {
       onOpenActions.current.push(action);
-      // If not connected or connecting, initiate connection.
       if (!socketRef.current || socketRef.current.readyState === WebSocket.CLOSED) {
         connectToSignalingServer();
       }
@@ -254,7 +251,6 @@ export function useWebRTC(
   useEffect(() => {
     const getDevices = async () => {
       try {
-        // We need to request permission first to be able to enumerate devices
         await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         const devices = await navigator.mediaDevices.enumerateDevices();
         const videoDevices = devices.filter((d) => d.kind === "videoinput");
@@ -278,7 +274,6 @@ export function useWebRTC(
   useEffect(() => {
     const getMediaStream = async () => {
       if (selectedCamera && selectedMicrophone) {
-        // Stop previous stream tracks before getting a new one
         localStreamRef.current?.getTracks().forEach((track) => track.stop());
         try {
           const stream = await navigator.mediaDevices.getUserMedia({
@@ -308,15 +303,14 @@ export function useWebRTC(
   const stopSearching = useCallback(() => {
     if (socketRef.current) {
       sendSignal("stop-search", {});
-      socketRef.current.close(); // This will trigger the onclose handler for cleanup
+      socketRef.current.close();
     }
-    cleanupConnection();
-  }, [cleanupConnection, sendSignal]);
+    endChatSession();
+  }, [endChatSession, sendSignal]);
   
   const skipChat = useCallback(() => {
-    // A skip is effectively a stop followed by an immediate start
     stopSearching();
-    setTimeout(() => startSearching(), 100); // Small delay to allow cleanup
+    setTimeout(() => startSearching(), 100);
   }, [startSearching, stopSearching]);
 
   const sendMessage = useCallback((text: string) => {
@@ -332,7 +326,6 @@ export function useWebRTC(
       return;
     }
 
-    // Convert ArrayBuffer to Base64
     let binary = '';
     const bytes = new Uint8Array(screenshot);
     for (let i = 0; i < bytes.byteLength; i++) {
@@ -348,7 +341,6 @@ export function useWebRTC(
     });
     
     console.log("Report sent. Skipping to next chat.");
-    // Immediately skip to the next user after sending the report.
     skipChat();
   }, [partnerId, sendSignal, skipChat]);
 
@@ -366,7 +358,6 @@ export function useWebRTC(
     skipChat,
     stopChat: stopSearching,
     partnerId,
-    partnerProfile,
     isSearching,
     hasCamera,
     cameraPermission,
@@ -378,8 +369,9 @@ export function useWebRTC(
     setSelectedMicrophone,
     sendMessage,
     chatMessages,
-    localStreamRef,
+    localStream: localStreamRef.current,
     sendReport,
     notifySettingsChanged,
   };
 }
+

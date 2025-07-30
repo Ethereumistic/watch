@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -23,6 +22,12 @@ import {
   Infinity,
 } from "lucide-react"
 import Link from "next/link"
+import { loadStripe } from "@stripe/stripe-js"
+import { createClient } from "@/lib/supabase/client"
+import { useAuthStore } from "@/stores/use-auth-store"
+
+const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
+const supabase = createClient()
 
 interface PlanFeature {
   name: string
@@ -87,6 +92,7 @@ const features: PlanFeature[] = [
 export default function SubscriptionPage() {
   const [isYearly, setIsYearly] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null)
+  const { user } = useAuthStore()
 
   const plans = [
     {
@@ -104,6 +110,7 @@ export default function SubscriptionPage() {
       buttonText: "Current Plan",
       icon: Users,
       features: ["Interest-based matching", "1 country filter", "Basic chat features", "Standard video quality"],
+      priceId: "",
     },
     {
       id: "boost",
@@ -126,6 +133,7 @@ export default function SubscriptionPage() {
         "Priority matching",
         "Enhanced filters",
       ],
+      priceId: "price_1RoOBZPTrUwH1MjBA9nR7P62",
     },
     {
       id: "vip",
@@ -149,13 +157,41 @@ export default function SubscriptionPage() {
         "VIP badge",
         "Priority support",
       ],
+      priceId: isYearly ? "price_1RoOGkPTrUwH1MjBtOhyshjt" : "price_1RoOEVPTrUwH1MjB8Ue5ZX5u",
     },
   ]
 
-  const handlePlanSelect = (planId: string) => {
+  const handlePlanSelect = async (planId: string) => {
+    if (!user) {
+      // Handle case where user is not logged in
+      console.error("User is not logged in.")
+      return
+    }
+
+    const plan = plans.find((p) => p.id === planId)
+    if (!plan || !plan.priceId) {
+      console.error("Invalid plan selected.")
+      return
+    }
+
     setSelectedPlan(planId)
-    // Here you would integrate with your payment processor
-    console.log(`Selected plan: ${planId}`)
+
+    try {
+      const { data, error } = await supabase.functions.invoke("create-checkout-session", {
+        body: { priceId: plan.priceId, userId: user.id },
+      })
+
+      if (error) {
+        throw error
+      }
+
+      const stripe = await stripePromise
+      if (stripe) {
+        await stripe.redirectToCheckout({ sessionId: data.sessionId })
+      }
+    } catch (error) {
+      console.error("Error creating checkout session:", error)
+    }
   }
 
   const renderFeatureValue = (value: boolean | string) => {
@@ -431,3 +467,4 @@ export default function SubscriptionPage() {
     </div>
   )
 }
+
