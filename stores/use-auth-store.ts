@@ -30,6 +30,9 @@ export type Profile = {
   preferred_countries: string[] | null;
   preferred_gender: ('male' | 'female' | 'couple')[] | null;
   settings: ProfileSettings | null;
+  boosts: number;
+  boost_until: string | null;
+  vip_until: string | null;
 };
 
 // This type represents the data received from the backend about a matched partner.
@@ -38,6 +41,8 @@ export type PartnerProfile = {
   dob: string | null;
   gender: 'male' | 'female' | 'couple' | null;
   country: string | null;
+  role: 'free' | 'vip' | 'boost' | 'mod' | 'admin';
+  settings: Partial<ProfileSettings> | null;
 };
 
 type AuthState = {

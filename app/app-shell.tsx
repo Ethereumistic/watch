@@ -33,7 +33,7 @@ export function AppShell({
       <LogIn open={isLoginOpen} onOpenChange={setLoginOpen} />
 
       {/* The listener is now only for LIVE updates after the initial load */}
-      <SupabaseAuthListener />
+      <SupabaseAuthListener serverSession={session} />
     </>
   );
 }

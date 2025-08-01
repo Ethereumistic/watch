@@ -2,7 +2,14 @@
 
 import { useAuthStore } from "@/stores/use-auth-store"
 import { calculateAge } from "@/lib/utils"
-import { User, Cake, VenetianMask, ChevronRight, Globe } from "lucide-react"
+import {
+  User,
+  Cake,
+  VenetianMask,
+  ChevronRight,
+  Globe,
+  Crown,
+} from "lucide-react"
 import { useEffect, useState } from "react"
 
 interface PartnerInfoProps {
@@ -63,6 +70,12 @@ export function PartnerInfo({ partnerId }: PartnerInfoProps) {
             <h3 className="flex items-center gap-2 font-bold">
               <User size={16} />
               <span>{partnerProfile.username || "Stranger"}</span>
+              {partnerProfile.role === "vip" && partnerProfile.settings?.show_vip_badge && (
+                <span className="ml-2 flex items-center gap-1 rounded-full bg-gradient-pink px-2 py-0.5 text-xs text-white">
+                  <Crown size={12} />
+                  VIP
+                </span>
+              )}
             </h3>
             <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-gray-300">
               {age && age > 0 && (

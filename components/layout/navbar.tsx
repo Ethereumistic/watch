@@ -97,7 +97,7 @@ export function Navbar({ setLoginOpen }: NavbarProps) {
         {/* Desktop Actions */}
         <div className="hidden md:flex items-center space-x-4">
           {/* Theme Toggle */}
-          <ModeToggle />
+          {/* <ModeToggle /> */}
 
           {/* User Menu / Sign In Button */}
           {session ? (
@@ -173,7 +173,7 @@ export function Navbar({ setLoginOpen }: NavbarProps) {
             ))}
 
             {/* Mobile Theme Toggle */}
-            <ModeToggle />
+            {/* <ModeToggle /> */}
 
             {/* Mobile User Menu */}
             {session ? (

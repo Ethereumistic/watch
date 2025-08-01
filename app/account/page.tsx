@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -15,27 +15,8 @@ import { User, Settings, CreditCard, Shield, Camera, MapPin, Calendar, Clock, Sa
 import { useAuthStore, Profile } from "@/stores/use-auth-store"
 import { createClient } from "@/lib/supabase/client"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
-
-// The ENUM values from your database, now defined as a constant in the frontend.
-// This is the single source of truth for rendering interests.
-const ALL_POSSIBLE_INTERESTS = [
-    { name: 'Politics', emoji: '🗳️' },
-    { name: 'Sports', emoji: '⚽' },
-    { name: 'Music', emoji: '🎵' },
-    { name: 'Gaming', emoji: '🎮' },
-    { name: 'Science', emoji: '🧬' },
-    { name: 'Technology', emoji: '🤖' },
-    { name: 'Movies & TV', emoji: '🎬' },
-    { name: 'Books & Writing', emoji: '📚' },
-    { name: 'Health & Fitness', emoji: '🏋️' },
-    { name: 'Food & Cooking', emoji: '🍔' },
-    { name: 'Travel & Adventure', emoji: '✈️' },
-    { name: 'Art & Design', emoji: '🎨' },
-    { name: 'Fashion & Beauty', emoji: '👗' },
-    { name: 'Pets & Animals', emoji: '🐶' },
-    { name: 'Business & Finance', emoji: '📈' },
-    { name: 'Lifestyle & Wellness', emoji: '🧘' }
-];
+import { SubscriptionStatus } from "@/components/account/SubscriptionStatus"
+import { ALL_COUNTRIES, ALL_POSSIBLE_INTERESTS } from "@/lib/constants"
 
 // We declare the shape of our profile object from the database
 type ProfileWithInterests = Profile & {
@@ -54,26 +35,29 @@ export default function AccountPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const supabase = createClient()
 
+  const userCountry = useMemo(() => {
+    if (!editableProfile?.country) return null;
+    return ALL_COUNTRIES.find(c => c.name === editableProfile.country);
+  }, [editableProfile?.country]);
+
+  const handleSubscriptionChange = (newProfile: Profile) => {
+    setGlobalProfile(newProfile);
+    setEditableProfile(newProfile as ProfileWithInterests);
+    if (newProfile.interests) {
+        setSelectedInterests(newProfile.interests);
+    }
+  };
 
   useEffect(() => {
     const globalProfileId = globalProfile?.id;
     
-    // Condition to update local state:
-    // 1. The global profile has loaded (`globalProfile` is not null).
-    // 2. EITHER the local form state has not been initialized yet (`editableProfile` is null)
-    //    OR the user has changed (the ID in the global store is different from the one in the local form state).
     if (globalProfile && (!editableProfile || editableProfile.id !== globalProfileId)) {
         setEditableProfile(globalProfile as ProfileWithInterests);
         setSelectedInterests(globalProfile.interests || []);
     }
   }, [globalProfile, editableProfile]);
   
-  /**
-   * ROBUST SAVE HANDLER
-   * This function now correctly handles the state synchronization.
-   */
   const handleSave = async () => {
-    // 1. Set the button to its "saving" state to prevent multiple clicks.
     setIsSaving(true);
     try {
       if (!user || !editableProfile) {
@@ -143,8 +127,8 @@ export default function AccountPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 p-4 md:p-8">
       <div className="mt-12 max-w-6xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Account Settings</h1>
+        <div className="mb-4">
+          <h1 className="text-3xl font-bold text-white mb-1">Account Settings</h1>
           <p className="text-white/80">Manage your account settings and preferences</p>
         </div>
 
@@ -162,6 +146,10 @@ export default function AccountPage() {
                 </Tabs>
               </CardContent>
             </Card>
+
+            <div className="mt-6">
+              <SubscriptionStatus profile={editableProfile} onSubscriptionChange={handleSubscriptionChange} />
+            </div>
           </div>
 
           <div className="lg:col-span-3">
@@ -174,56 +162,65 @@ export default function AccountPage() {
                           <CardDescription className="text-white/80">Update your personal information and profile picture</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-6">
-                          <div className="flex items-center gap-6">
-                            <div className="relative">
-                              <Avatar className="h-24 w-24">
-                                <AvatarImage src={editableProfile.avatar_url || ""} alt="Profile picture" />
-                                <AvatarFallback className="text-lg font-semibold bg-gradient-to-br from-purple-500 to-pink-500 text-white">
-                                  {getInitials(editableProfile.username, user?.email)}
-                                </AvatarFallback>
-                              </Avatar>
-                              <Button size="sm" className="absolute -bottom-2 -right-2 rounded-full h-8 w-8 p-0 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white" onClick={() => fileInputRef.current?.click()}>
-                                <Camera className="h-4 w-4" />
-                              </Button>
-                              <input ref={fileInputRef} type="file" accept="image/*" className="hidden"  />
+                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                            {/* --- Left Column: Avatar & Info --- */}
+                            <div className="lg:col-span-1 flex flex-col items-center lg:items-start gap-4">
+                                <div className="relative">
+                                    <Avatar className="h-24 w-24">
+                                        <AvatarImage src={editableProfile.avatar_url || ""} alt="Profile picture" />
+                                        <AvatarFallback className="text-lg font-semibold bg-gradient-to-br from-purple-500 to-pink-500 text-white">
+                                        {getInitials(editableProfile.username, user?.email)}
+                                        </AvatarFallback>
+                                    </Avatar>
+                                    <Button size="sm" className="absolute -bottom-2 -right-2 rounded-full h-8 w-8 p-0 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white" onClick={() => fileInputRef.current?.click()}>
+                                        <Camera className="h-4 w-4" />
+                                    </Button>
+                                    <input ref={fileInputRef} type="file" accept="image/*" className="hidden"  />
+                                </div>
+                                <div className="text-center lg:text-left">
+                                    <p className="text-sm text-white/80">{user?.email}</p>
+                                    {editableProfile.dob && <Badge variant="secondary" className="mt-2 bg-white/20 text-white border-white/30">{calculateAge(editableProfile.dob)} years old</Badge>}
+                                </div>
                             </div>
-                            <div>
-                              <h3 className="font-semibold text-lg text-white">{editableProfile.username || 'New User'}</h3>
-                              <p className="text-sm text-white/80">{user?.email}</p>
-                              {editableProfile.dob && <Badge variant="secondary" className="mt-2 bg-white/20 text-white border-white/30">{calculateAge(editableProfile.dob)} years old</Badge>}
-                            </div>
-                          </div>
-
-                          <Separator className="bg-white/20" />
-                          
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="space-y-2">
-                              <Label htmlFor="username" className="text-white/80">Username</Label>
-                              <Input id="username" value={editableProfile.username || ''} onChange={e => setEditableProfile(p => p ? { ...p, username: e.target.value } : null)} placeholder="Enter your username" className="bg-white/10 border-white/20 text-white placeholder:text-white/60" />
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="dob" className="text-white/80">Date of Birth</Label>
-                              <Input id="dob" type="date" value={editableProfile.dob ? new Date(editableProfile.dob).toISOString().split('T')[0] : ''} onChange={e => setEditableProfile(p => p ? { ...p, dob: e.target.value } : null)} className="bg-white/10 border-white/20 text-white" />
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="gender" className="text-white/80">Gender</Label>
-                              <Select value={editableProfile.gender || ''} onValueChange={(value: 'male' | 'female' | 'couple') => setEditableProfile(p => p ? { ...p, gender: value } : null)}>
-                                <SelectTrigger className="bg-white/10 border-white/20 text-white">
-                                  <SelectValue placeholder="Select gender" />
-                                </SelectTrigger>
-                                <SelectContent className="bg-gray-800 border-gray-700 text-white">
-                                  <SelectItem value="male">Male</SelectItem>
-                                  <SelectItem value="female">Female</SelectItem>
-                                  <SelectItem value="couple">Couple</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="country" className="text-white/80">Country</Label>
-                              <div className="relative">
-                                <Input id="country" value={editableProfile.country || 'Detecting...'} disabled className="bg-white/5 border-white/10 text-white" />
-                                <MapPin className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/60" />
-                              </div>
+                            
+                            {/* --- Right Column: Editable Fields --- */}
+                            <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <Label htmlFor="username" className="text-white/80">Username</Label>
+                                    <Input id="username" value={editableProfile.username || ''} onChange={e => setEditableProfile(p => p ? { ...p, username: e.target.value } : null)} placeholder="Enter your username" className="bg-white/10 border-white/20 text-white placeholder:text-white/60" />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="dob" className="text-white/80">Date of Birth</Label>
+                                    <Input id="dob" type="date" value={editableProfile.dob ? new Date(editableProfile.dob).toISOString().split('T')[0] : ''} onChange={e => setEditableProfile(p => p ? { ...p, dob: e.target.value } : null)} className="bg-white/10 border-white/20 text-white" />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="gender" className="text-white/80">Gender</Label>
+                                    <Select value={editableProfile.gender || ''} onValueChange={(value: 'male' | 'female' | 'couple') => setEditableProfile(p => p ? { ...p, gender: value } : null)}>
+                                        <SelectTrigger className="bg-white/10 border-white/20 text-white">
+                                        <SelectValue placeholder="Select gender" />
+                                        </SelectTrigger>
+                                        <SelectContent className="bg-gray-800 border-gray-700 text-white">
+                                        <SelectItem value="male">Male</SelectItem>
+                                        <SelectItem value="female">Female</SelectItem>
+                                        <SelectItem value="couple">Couple</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="country" className="text-white/80">Country</Label>
+                                    <div className="flex items-center gap-3 bg-white/5 border-white/10 text-white rounded-md h-10 px-3">
+                                        {userCountry ? (
+                                            <img
+                                                src={`https://flagcdn.com/32x24/${userCountry.abbr}.png`}
+                                                alt={userCountry.name}
+                                                className="h-4 w-6 rounded-sm"
+                                            />
+                                        ) : (
+                                            <MapPin className="h-4 w-4 text-white/60" />
+                                        )}
+                                        <span>{editableProfile.country || 'Detecting...'}</span>
+                                    </div>
+                                </div>
                             </div>
                           </div>
                           
@@ -242,7 +239,7 @@ export default function AccountPage() {
                                 <ToggleGroupItem 
                                   key={interest.name} 
                                   value={interest.name} 
-                                  className="border-white/30 bg-white/10 text-white/80 hover:bg-white/20 hover:text-white data-[state=on]:bg-gradient-to-br  from-purple-900 via-blue-900 to-indigo-900 data-[state=on]:text-white data-[state=on]:border-pink-500"
+                                  className="border-white/30 bg-white/10 text-white/80 hover:bg-white/20 hover:text-white data-[state=on]:bg-gradient-to-br from-purple-500 to-pink-500 data-[state=on]:text-white data-[state=on]:border-pink-500"
                                 >
                                   {interest.emoji} <span className="ml-2">{interest.name}</span>
                                 </ToggleGroupItem>
