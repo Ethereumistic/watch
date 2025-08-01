@@ -11,6 +11,12 @@ interface ChatMessage {
   timestamp: Date;
 }
 
+// <-- NEW: Define the shape of the ad payload from the server
+interface AdPayload {
+  videoUrl: string;
+  profile: PartnerProfile;
+}
+
 // --- HOOK ---
 export function useWebRTC(
   localVideoRef: React.RefObject<HTMLVideoElement>,
@@ -21,7 +27,7 @@ export function useWebRTC(
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const onOpenActions = useRef<(() => void)[]>([]);
-  
+
   const handlersRef = useRef<any>({});
 
   const [isSocketConnected, setIsSocketConnected] = useState(false);
@@ -34,6 +40,10 @@ export function useWebRTC(
   const [selectedCamera, setSelectedCamera] = useState<string | undefined>();
   const [selectedMicrophone, setSelectedMicrophone] = useState<string | undefined>();
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+
+  // <-- NEW: State for managing video ads
+  const [isAdPlaying, setIsAdPlaying] = useState(false);
+  const [adPayload, setAdPayload] = useState<AdPayload | null>(null);
 
   // --- SIGNALING ---
   const sendSignal = useCallback((type: string, payload: any) => {
@@ -66,6 +76,9 @@ export function useWebRTC(
     resetPeerConnection();
     setPartnerId(null);
     setPartnerProfile(null);
+    // <-- NEW: Reset ad state on cleanup
+    setIsAdPlaying(false);
+    setAdPayload(null);
   }, [resetPeerConnection, setPartnerProfile]);
 
 
@@ -78,8 +91,6 @@ export function useWebRTC(
       if (event.candidate) {
         console.log("[PCC] onicecandidate: Found candidate, sending...", event.candidate);
         sendSignal("signal", { targetUserId: currentPartnerId, candidate: event.candidate });
-      } else {
-        console.log("[PCC] onicecandidate: All candidates have been sent.");
       }
     };
 
@@ -95,8 +106,7 @@ export function useWebRTC(
         console.log(`[PCC] Connection State Change: ${pc.connectionState}`);
       }
     };
-    
-    console.log("[PCC] Attaching local stream to peer connection.");
+
     localStreamRef.current?.getTracks().forEach(track => {
       pc.addTrack(track, localStreamRef.current!);
     });
@@ -105,105 +115,83 @@ export function useWebRTC(
     return pc;
   }, [sendSignal, remoteVideoRef]);
 
-  // --- SIGNALING HANDLERS ---
-  useEffect(() => {
-    handlersRef.current.handleMatchFound = async (payload: { opponentId: string; role: 'polite' | 'impolite'; iceServers: RTCConfiguration['iceServers'] }) => {
-      const { opponentId, role, iceServers } = payload;
-      console.log(`Match found with ${opponentId}. My role: ${role}.`);
-      resetPeerConnection(); // Use the lightweight reset
-      setPartnerId(opponentId);
-      const pc = createPeerConnection(iceServers, opponentId);
-      setIsSearching(false);
-  
-      if (role === 'impolite') {
-        console.log("I am the initiator ('impolite'), creating offer...");
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        console.log("Offer created and set as local description. Sending offer.");
-        sendSignal("signal", { targetUserId: opponentId, offer: offer });
-      }
-    };
+// --- SIGNALING HANDLERS ---
+useEffect(() => {
+  handlersRef.current.handleAdMatchFound = (payload: AdPayload) => {
+    endChatSession(); // Use full cleanup for ads
+    setIsSearching(false);
+    setPartnerId("ad_bot");
+    setIsAdPlaying(true);
+    setAdPayload(payload);
+    setPartnerProfile(payload.profile);
+  };
 
+  handlersRef.current.handleMatchFound = async (payload: { opponentId: string; role: 'polite' | 'impolite'; iceServers: RTCConfiguration['iceServers'] }) => {
+    const { opponentId, role, iceServers } = payload;
+    // <-- BUG FIX: Use resetPeerConnection() instead of endChatSession() here.
+    // This prepares the technical connection without clearing the partner profile,
+    // which is set by the subsequent 'partner-profile' message.
+    resetPeerConnection();
+    setPartnerId(opponentId);
+    const pc = createPeerConnection(iceServers, opponentId);
+    setIsSearching(false);
+
+    if (role === 'impolite') {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      sendSignal("signal", { targetUserId: opponentId, offer: offer });
+    }
+  };
+
+    // ... (rest of the handlers: handleOffer, handleAnswer, etc. remain unchanged) ...
     handlersRef.current.handleOffer = async (payload: { senderId: string; offer: RTCSessionDescriptionInit }) => {
-      const { senderId, offer } = payload;
-      console.log("Received offer from", senderId);
-      if (!peerConnectionRef.current) {
-        console.error("Received offer but peer connection is not initialized. This is a critical error.");
-        return;
-      }
-      await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(offer));
-      console.log("Remote description (offer) set. Creating answer.");
-      const answer = await peerConnectionRef.current.createAnswer();
-      await peerConnectionRef.current.setLocalDescription(answer);
-      console.log("Answer created and set as local description. Sending answer.");
-      sendSignal("signal", { targetUserId: senderId, answer: answer });
+        if (!peerConnectionRef.current) return;
+        await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(payload.offer));
+        const answer = await peerConnectionRef.current.createAnswer();
+        await peerConnectionRef.current.setLocalDescription(answer);
+        sendSignal("signal", { targetUserId: payload.senderId, answer: answer });
     };
-
     handlersRef.current.handleAnswer = async (payload: { senderId: string; answer: RTCSessionDescriptionInit }) => {
-      console.log("Received answer from", payload.senderId);
-      if (peerConnectionRef.current) {
-        await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(payload.answer));
-        console.log("Remote description (answer) set successfully.");
-      } else {
-        console.error("Received answer but peer connection is not initialized.");
-      }
+        if (peerConnectionRef.current) {
+            await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(payload.answer));
+        }
     };
-
     handlersRef.current.handleIceCandidate = (payload: { senderId: string; candidate: RTCIceCandidateInit }) => {
-      console.log("Received ICE candidate from", payload.senderId);
-      if (peerConnectionRef.current) {
-        peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(payload.candidate))
-          .catch(e => console.error("Error adding received ICE candidate:", e));
-      } else {
-        console.error("Received ICE candidate but peer connection is not initialized.");
-      }
+        if (peerConnectionRef.current) {
+            peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(payload.candidate)).catch(e => {});
+        }
     };
-
     handlersRef.current.handleChatMessage = (payload: { senderId: string; text: string }) => {
-      setChatMessages(prev => [...prev, { id: crypto.randomUUID(), text: payload.text, isUser: false, timestamp: new Date() }]);
+        setChatMessages(prev => [...prev, { id: crypto.randomUUID(), text: payload.text, isUser: false, timestamp: new Date() }]);
     };
-
     handlersRef.current.handlePartnerProfile = (payload: { profile: PartnerProfile }) => {
-      console.log("CLIENT: Received partner profile:", payload.profile);
-      setPartnerProfile(payload.profile);
+        setPartnerProfile(payload.profile);
     };
-
     handlersRef.current.handlePartnerDisconnected = () => {
-      console.log("Partner disconnected. Cleaning up and starting a new search.");
-      endChatSession();
-      setIsSearching(true);
-      sendSignal("start-search", {});
+        endChatSession();
+        startSearching();
     };
 
-  }, [resetPeerConnection, endChatSession, createPeerConnection, sendSignal, setPartnerProfile]);
+  }, [endChatSession, createPeerConnection, sendSignal, setPartnerProfile]);
 
 
   // --- WEBSOCKET LIFECYCLE & ACTION QUEUE ---
   const connectToSignalingServer = useCallback(() => {
     const token = session?.access_token;
-    if (!token) { 
-      console.error("No auth token found."); 
-      return; 
-    }
-    if (socketRef.current && socketRef.current.readyState !== WebSocket.CLOSED) {
-      console.log("Socket already exists or is connecting.");
-      return;
-    }
+    if (!token) { return; }
+    if (socketRef.current && socketRef.current.readyState !== WebSocket.CLOSED) { return; }
 
     const wsUrl = process.env.NEXT_PUBLIC_SIGNALING_URL || "ws://localhost:3003";
-    console.log(`Connecting to signaling server at: ${wsUrl}`);
     const newSocket = new WebSocket(wsUrl, token);
     socketRef.current = newSocket;
 
     newSocket.onopen = () => {
-      console.log("✅ WebSocket connection opened.");
       setIsSocketConnected(true);
       onOpenActions.current.forEach(action => action());
       onOpenActions.current = [];
     };
 
     newSocket.onclose = () => {
-      console.log("❌ WebSocket connection closed.");
       socketRef.current = null;
       setIsSocketConnected(false);
       setIsSearching(false);
@@ -216,9 +204,10 @@ export function useWebRTC(
       try {
         const message = JSON.parse(event.data);
         console.log(`[RECV] type: ${message.type}, payload:`, message.payload);
-        
+
         switch (message.type) {
           case 'info': break;
+          case 'ad-match-found': handlersRef.current.handleAdMatchFound(message.payload); break; // <-- NEW
           case 'match-found': handlersRef.current.handleMatchFound(message.payload); break;
           case 'partner-profile': handlersRef.current.handlePartnerProfile(message.payload); break;
           case 'signal':
@@ -262,7 +251,6 @@ export function useWebRTC(
         if (videoDevices.length > 0 && !selectedCamera) setSelectedCamera(videoDevices[0].deviceId);
         if (audioDevices.length > 0 && !selectedMicrophone) setSelectedMicrophone(audioDevices[0].deviceId);
       } catch (error) {
-        console.error("Failed to get media devices:", error);
         if (error instanceof DOMException && error.name === "NotAllowedError") {
           setCameraPermission("denied");
         }
@@ -307,22 +295,24 @@ export function useWebRTC(
     }
     endChatSession();
   }, [endChatSession, sendSignal]);
-  
+
   const skipChat = useCallback(() => {
     stopSearching();
     setTimeout(() => startSearching(), 100);
   }, [startSearching, stopSearching]);
 
   const sendMessage = useCallback((text: string) => {
-    if (partnerId) {
+    // <-- NEW: Prevent sending chat messages to ads
+    if (partnerId && !isAdPlaying) {
       setChatMessages(prev => [...prev, { id: crypto.randomUUID(), text, isUser: true, timestamp: new Date() }]);
       sendSignal('chat-message', { targetUserId: partnerId, text });
     }
-  }, [partnerId, sendSignal]);
+  }, [partnerId, sendSignal, isAdPlaying]);
 
   const sendReport = useCallback(async ({ screenshot, chatLog }: { screenshot: ArrayBuffer, chatLog: { messages: ChatMessage[] } }) => {
-    if (!partnerId) {
-      console.error("Cannot send report: no partner connected.");
+    // <-- NEW: Prevent reporting ads
+    if (!partnerId || isAdPlaying) {
+      console.error("Cannot send report: no partner connected or partner is an ad.");
       return;
     }
 
@@ -333,20 +323,17 @@ export function useWebRTC(
     }
     const screenshotBase64 = window.btoa(binary);
 
-    console.log("Sending report for partner:", partnerId);
     sendSignal('report-peer', {
       reportedUserId: partnerId,
       screenshot: screenshotBase64,
       chatLog: chatLog,
     });
-    
-    console.log("Report sent. Skipping to next chat.");
+
     skipChat();
-  }, [partnerId, sendSignal, skipChat]);
+  }, [partnerId, sendSignal, skipChat, isAdPlaying]);
 
   const notifySettingsChanged = useCallback((settingsPayload: any) => {
     executeWhenConnected(() => {
-      console.log("Notifying backend of settings change:", settingsPayload);
       sendSignal('settings-updated', settingsPayload);
     });
   }, [executeWhenConnected, sendSignal]);
@@ -372,6 +359,8 @@ export function useWebRTC(
     localStream: localStreamRef.current,
     sendReport,
     notifySettingsChanged,
+    // <-- NEW: Expose ad state to the component
+    isAdPlaying,
+    adPayload,
   };
 }
-

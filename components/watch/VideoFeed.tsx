@@ -2,7 +2,7 @@
 
 import { forwardRef, useState, useEffect } from "react"
 import { Video } from "lucide-react"
-import { Profile } from "@/stores/use-auth-store"
+import { Profile, PartnerProfile } from "@/stores/use-auth-store" // <-- Import PartnerProfile
 
 interface VideoFeedProps {
   isMuted?: boolean
@@ -15,56 +15,44 @@ interface VideoFeedProps {
   cameraPermission?: "prompt" | "granted" | "denied"
   profile?: Profile | null
   searchStartTime?: number | null
+  // <-- NEW: Props for handling ads
+  isAdPlaying: boolean
+  adPayload: { videoUrl: string; profile: PartnerProfile } | null
+  onAdEnded?: () => void
+
 }
 
 const SearchStatus = ({ profile, searchStartTime }: { profile: Profile; searchStartTime: number }) => {
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+    // This component remains unchanged
+    const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
-  useEffect(() => {
-      const timer = setInterval(() => {
-          setElapsedSeconds((Date.now() - searchStartTime) / 1000);
-      }, 1000);
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setElapsedSeconds((Date.now() - searchStartTime) / 1000);
+        }, 1000);
+        setElapsedSeconds((Date.now() - searchStartTime) / 1000);
+        return () => clearInterval(timer);
+    }, [searchStartTime]);
 
-      // Set initial value immediately
-      setElapsedSeconds((Date.now() - searchStartTime) / 1000);
-
-      return () => clearInterval(timer);
-  }, [searchStartTime]);
-
-  if (!profile?.settings) {
-      return <p>Looking for someone...</p>;
-  }
-
-  const { interest_max_wait_time, country_max_wait_time } = profile.settings;
-  const { interests, preferred_countries, preferred_gender } = profile;
-
-  const interestTimeLeft = interest_max_wait_time - elapsedSeconds;
-  const countryTimeLeft = country_max_wait_time - elapsedSeconds;
-
-  const showInterests = (interests?.length ?? 0) > 0 && interestTimeLeft > 0;
-  const showCountries = (preferred_countries?.length ?? 0) > 0 && countryTimeLeft > 0;
-
-  const genderText = preferred_gender && preferred_gender.length > 0 
-      ? preferred_gender.join(', ') 
-      : 'any gender';
-
-  const interestText = showInterests 
-      ? `interested in ${interests!.join(', ')} (${Math.ceil(interestTimeLeft)}s)` 
-      : '';
-  
-  const countryText = showCountries 
-      ? `in ${preferred_countries!.join(', ')} (${Math.ceil(countryTimeLeft)}s)` 
-      : '';
-
-  let parts = [`Searching for ${genderText}`];
-  if (interestText) parts.push(interestText);
-  if (countryText) parts.push(countryText);
-  
-  if (parts.length === 1 && genderText === 'any gender') {
-      return <p>Looking for someone...</p>;
-  }
-
-  return <p className="text-sm px-4">{parts.join(' ')}</p>;
+    if (!profile?.settings) {
+        return <p>Looking for someone...</p>;
+    }
+    const { interest_max_wait_time, country_max_wait_time } = profile.settings;
+    const { interests, preferred_countries, preferred_gender } = profile;
+    const interestTimeLeft = interest_max_wait_time - elapsedSeconds;
+    const countryTimeLeft = country_max_wait_time - elapsedSeconds;
+    const showInterests = (interests?.length ?? 0) > 0 && interestTimeLeft > 0;
+    const showCountries = (preferred_countries?.length ?? 0) > 0 && countryTimeLeft > 0;
+    const genderText = preferred_gender && preferred_gender.length > 0 ? preferred_gender.join(', ') : 'any gender';
+    const interestText = showInterests ? `interested in ${interests!.join(', ')} (${Math.ceil(interestTimeLeft)}s)` : '';
+    const countryText = showCountries ? `in ${preferred_countries!.join(', ')} (${Math.ceil(countryTimeLeft)}s)` : '';
+    let parts = [`Searching for ${genderText}`];
+    if (interestText) parts.push(interestText);
+    if (countryText) parts.push(countryText);
+    if (parts.length === 1 && genderText === 'any gender') {
+        return <p>Looking for someone...</p>;
+    }
+    return <p className="text-sm px-4">{parts.join(' ')}</p>;
 }
 
 
@@ -81,23 +69,42 @@ export const VideoFeed = forwardRef<HTMLVideoElement, VideoFeedProps>(
       cameraPermission = "prompt",
       profile,
       searchStartTime,
+      // <-- NEW: Destructure ad props
+      isAdPlaying,
+      adPayload,
+      onAdEnded,
     },
     ref
   ) => {
     const showNoCameraMessage = !isRemote && !hasCamera
     const showPermissionMessage = !isRemote && cameraPermission === "denied"
 
+    // <-- NEW: If this is the remote feed and an ad is playing, render the ad video.
+    if (isRemote && isAdPlaying && adPayload) {
+      return (
+        <div className="relative w-full h-1/2 lg:w-1/2 lg:h-full border-r border-gray-700 bg-black overflow-hidden">
+          <video
+            // Using a key forces React to re-mount the video element when the ad changes, ensuring the new video loads.
+            key={adPayload.videoUrl}
+            src={adPayload.videoUrl}
+            className="w-full h-full object-cover"
+            autoPlay            
+            muted={isMuted}
+            onEnded={onAdEnded}
+          />
+          <div className="absolute inset-0">
+            {/* We can still pass children like PartnerInfo over the ad */}
+            {children}
+          </div>
+        </div>
+      );
+    }
+
+    // <-- Otherwise, render the normal component content
     return (
-      // --- CHANGE START ---
-      // Removed `flex-1` and added explicit sizing for mobile and desktop.
-      // On mobile (default), it takes 50% of the height (`h-1/2`) and full width.
-      // On large screens (`lg:`), it takes 50% of the width (`lg:w-1/2`) and full height.
-      // This creates a strict boundary for the video element.
       <div className="relative w-full h-1/2 lg:w-1/2 lg:h-full border-r border-gray-700 bg-black overflow-hidden">
         <video
           ref={ref}
-          // The `object-cover` will now fill the container which has a fixed 50% height on mobile,
-          // correctly cropping the video without breaking the layout.
           className={`w-full h-full object-cover ${isMirrored ? "scale-x-[-1]" : ""}`}
           autoPlay
           playsInline

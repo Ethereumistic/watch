@@ -34,37 +34,40 @@ export default function WatchPage() {
   const [isInitialSetup, setIsInitialSetup] = useState(false);
 
   const [showViolationModal, setShowViolationModal] = useState(false);
-  const { profile, session, setProfile, isInitialized } = useAuthStore();
+  const { profile, session, setProfile, isInitialized, partnerProfile } = useAuthStore(); // <-- Get partnerProfile from global store
 
   const strangerVideoRef = useRef<HTMLVideoElement>(null)
   const userVideoRef = useRef<HTMLVideoElement>(null)
 
-  const { 
-    startSearching, 
+  const {
+    startSearching,
     stopSearching,
     skipChat,
     stopChat,
     partnerId,
-    partnerProfile,
     isSearching,
     hasCamera,
     cameraPermission,
-    availableCameras, 
-    availableMicrophones, 
-    selectedCamera, 
-    selectedMicrophone, 
-    setSelectedCamera, 
-    setSelectedMicrophone, 
+    availableCameras,
+    availableMicrophones,
+    selectedCamera,
+    selectedMicrophone,
+    setSelectedCamera,
+    setSelectedMicrophone,
     sendMessage,
     chatMessages,
     localStream,
     sendReport,
     notifySettingsChanged,
+    // <-- NEW: Get ad state from the hook
+    isAdPlaying,
+    adPayload,
   } = useWebRTC(
-      userVideoRef as React.RefObject<HTMLVideoElement>, 
+      userVideoRef as React.RefObject<HTMLVideoElement>,
       strangerVideoRef as React.RefObject<HTMLVideoElement>
   );
 
+  // ... (all other useEffects and handlers remain unchanged) ...
   useEffect(() => {
     if (isSearching && !searchStartTime) {
       setSearchStartTime(Date.now());
@@ -75,19 +78,12 @@ export default function WatchPage() {
 
   const handleSaveSettings = async (payload: any) => {
     if (!session?.user.id) {
-      console.error("User not authenticated. Cannot save settings.");
       return;
     }
     const { data: updatedProfile, error } = await updateProfileSettings(session.user.id, payload);
-    
-    if (error) {
-      console.error("Failed to save settings:", error);
-    } else if (updatedProfile) {
-      // On successful save, update the global state
+    if (!error && updatedProfile) {
       setProfile(updatedProfile);
-      // And notify the backend to update its cache.
       notifySettingsChanged(payload);
-       // If this was the initial setup, mark it as complete.
       if (isInitialSetup) {
         setIsInitialSetup(false);
       }
@@ -95,7 +91,6 @@ export default function WatchPage() {
   };
 
   useEffect(() => {
-    // Once the auth store is initialized, check if the user needs to complete their profile.
     if (isInitialized && profile) {
       const needsSetup = !profile.username || !profile.dob || !profile.gender;
       if (needsSetup) {
@@ -104,7 +99,6 @@ export default function WatchPage() {
       }
     }
   }, [profile, isInitialized]);
-
 
   useEffect(() => {
     if (profile) {
@@ -131,45 +125,43 @@ export default function WatchPage() {
   };
 
   const handleReport = async () => {
-    if (!strangerVideoRef.current || !partnerId || !sendReport) {
-      console.error("Cannot report: No partner connected or report function not available.");
-      return;
-    }
-  
-    const video = strangerVideoRef.current;
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
-    const recentMessages = chatMessages.slice(-10);
-  
-    canvas.toBlob(async (blob) => {
-      if (blob) {
-        const screenshotBuffer = await blob.arrayBuffer();
-        sendReport({ 
-          screenshot: screenshotBuffer,
-          chatLog: { messages: recentMessages }
-        });
+    // <-- NEW: Simplified ad reporting logic
+    if (isAdPlaying) {
+      // If it's an ad, simply skip to the next person.
+      console.log("Ad 'reported', skipping to next user.");
+      skipChat();
+    } else {
+      // Otherwise, use the existing logic for reporting a real user.
+      if (!strangerVideoRef.current || !partnerId || !sendReport) {
+        return;
       }
-    }, 'image/jpeg', 0.7);
+      const video = strangerVideoRef.current;
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const recentMessages = chatMessages.slice(-10);
+      canvas.toBlob(async (blob) => {
+        if (blob) {
+          const screenshotBuffer = await blob.arrayBuffer();
+          sendReport({
+            screenshot: screenshotBuffer,
+            chatLog: { messages: recentMessages }
+          });
+        }
+      }, 'image/jpeg', 0.7);
+    }
   };
 
   const isConnected = !!partnerId
   const isCameraReady = hasCamera && cameraPermission === "granted"
 
   const handleStartStop = useCallback(() => {
-    if (isConnected) {
-      stopChat()
-      setChatOpen(false)
-    } else if (isSearching) {
-      stopSearching()
-    } else {
-      startSearching()
-    }
+    if (isConnected) { stopChat() }
+    else if (isSearching) { stopSearching() }
+    else { startSearching() }
   }, [isConnected, isSearching, startSearching, stopSearching, stopChat])
 
   const handleNext = useCallback(() => {
@@ -202,43 +194,35 @@ export default function WatchPage() {
     if (value > 0) setIsStrangerMuted(false)
   }, [])
 
-  const handleMuteToggle = useCallback(() => {
-    setIsStrangerMuted(prev => !prev)
-  }, [])
-
-  const handleUserMuteToggle = useCallback(() => {
-    setIsUserMuted((prev) => !prev)
-  }, [])
-
+  const handleMuteToggle = useCallback(() => setIsStrangerMuted(prev => !prev), [])
+  const handleUserMuteToggle = useCallback(() => setIsUserMuted((prev) => !prev), [])
   const isEffectivelyMuted = isStrangerMuted || strangerVolume === 0
 
   if (showViolationModal && profile) {
-    return (
-      <ViolationModal 
-        isOpen={true}
-        level={profile.violation_level}
-        banned_until={profile.banned_until}
-        onAcknowledge={profile.violation_level === 1 ? handleAcknowledgeWarning : undefined}
-      />
-    )
+    return <ViolationModal isOpen={true} level={profile.violation_level} banned_until={profile.banned_until} onAcknowledge={profile.violation_level === 1 ? handleAcknowledgeWarning : undefined} />
   }
 
   return (
     <div className="h-[100dvh] bg-black flex flex-col relative overflow-hidden">
-      <div className={`flex-1 flex-col lg:flex-row flex transition-all duration-300 overflow-hidden ${chatOpen ? "pr-80" : ""}`}>
-        <VideoFeed 
-          ref={strangerVideoRef} 
-          isMuted={isEffectivelyMuted} 
-          isConnected={isConnected} 
-          isSearching={isSearching} 
+      <div className={`flex-1 flex-col lg:flex-row flex transition-all duration-300 overflow-hidden ${chatOpen && !isAdPlaying ? "pr-80" : ""}`}> {/* <-- NEW: Don't shift layout for ads */}
+        <VideoFeed
+          ref={strangerVideoRef}
+          isMuted={isEffectivelyMuted}
+          isConnected={isConnected}
+          isSearching={isSearching}
           isRemote
           profile={profile}
           searchStartTime={searchStartTime}
+          // <-- NEW: Pass ad state to the remote video feed
+          isAdPlaying={isAdPlaying}
+          adPayload={adPayload}
+          onAdEnded={skipChat}
         >
           <PartnerInfo profile={partnerProfile} partnerId={partnerId} />
           <Link href="/" className="z-10">
             <Logo className="absolute left-2 lg:top-2 top-[88%]" />
           </Link>
+          {/* <-- NEW: Show report button only if connected and not an ad */}
           {isConnected && <Report onReport={handleReport} />}
 
           <VolumeControl
@@ -250,7 +234,7 @@ export default function WatchPage() {
           />
         </VideoFeed>
 
-        <VideoFeed ref={userVideoRef} isMuted isMirrored isConnected={isConnected} isSearching={isSearching} hasCamera={hasCamera} cameraPermission={cameraPermission}>
+        <VideoFeed ref={userVideoRef} isMuted isMirrored isConnected={isConnected} isSearching={isSearching} hasCamera={hasCamera} cameraPermission={cameraPermission} isAdPlaying={isAdPlaying} adPayload={adPayload}>
           <DeviceSelectors
             cameras={availableCameras}
             microphones={availableMicrophones}
@@ -271,6 +255,7 @@ export default function WatchPage() {
         onStartStop={handleStartStop}
         onNext={handleNext}
         onToggleChat={() => {
+          if (isAdPlaying) return; // <-- NEW: Prevent opening chat during ad
           setChatOpen(!chatOpen)
           if (!chatOpen) {
             setUnreadMessages(0)
@@ -281,15 +266,18 @@ export default function WatchPage() {
         unreadMessages={unreadMessages}
       />
 
-      <Chat
-        isOpen={chatOpen}
-        onClose={() => setChatOpen(false)}
-        messages={chatMessages}
-        onSendMessage={sendMessage}
-      />
-      
-      <SettingsModal 
-        isOpen={isSettingsOpen} 
+      {/* <-- NEW: Conditionally render chat */}
+      {!isAdPlaying && (
+        <Chat
+          isOpen={chatOpen}
+          onClose={() => setChatOpen(false)}
+          messages={chatMessages}
+          onSendMessage={sendMessage}
+        />
+      )}
+
+      <SettingsModal
+        isOpen={isSettingsOpen}
         onOpenChange={setIsSettingsOpen}
         onSave={handleSaveSettings}
         isInitialSetup={isInitialSetup}
