@@ -21,7 +21,7 @@ export function AppShell({
   const pathname = usePathname();
   const [isLoginOpen, setLoginOpen] = useState(false);
 
-  const showNavbar = pathname !== "/watch" && !pathname.startsWith("/moderation");
+  const showNavbar = pathname !== "/watch" && !pathname.startsWith("/moderation") && !pathname.startsWith("/administration");
 
   return (
     <>

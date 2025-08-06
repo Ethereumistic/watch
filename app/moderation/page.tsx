@@ -182,5 +182,5 @@ function ModerationPage() {
   )
 }
 
-// Wrap the page with the HOC to protect it
-export default withAuth(ModerationPage);
+// Wrap the page with the HOC to protect it, specifying the allowed roles.
+export default withAuth(ModerationPage)(['mod', 'admin']);
