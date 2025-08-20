@@ -5,6 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, User, ArrowRightLeft } from "lucide-react";
 import { ALL_COUNTRIES } from "@/lib/constants";
 import type { MatchProfile } from "@/stores/use-auth-store";
+import { calculateAge } from "@/lib/utils"; // Import the calculateAge function
+import { Badge } from "@/components/ui/badge";
+
 
 // --- Helper Components ---
 const CountryFlag = ({ countryName }: { countryName: string | null | undefined }) => {
@@ -14,18 +17,43 @@ const CountryFlag = ({ countryName }: { countryName: string | null | undefined }
   return <img src={`https://cdn.jsdelivr.net/gh/lipis/flag-icons/flags/4x3/${code}.svg`} alt={countryName} className="w-6 h-auto rounded-sm border" />;
 };
 
-const ProfileCard = ({ profile }: { profile: MatchProfile }) => (
-    <div className="flex-1 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg">
-        <div className="flex items-center gap-3">
-            <CountryFlag countryName={profile.country} />
-            <h4 className="font-bold">{profile.username || 'Anonymous'}</h4>
-        </div>
-        <p className="text-xs font-mono mt-2 text-muted-foreground">{profile.id}</p>
-        <div className="text-xs mt-1">
-            <span>Gender: {profile.gender || 'N/A'}</span>
-        </div>
-    </div>
-)
+const ProfileCard = ({ profile }: { profile: MatchProfile }) => {
+  // Helper function to determine the background color based on gender
+  const getGenderBackground = (gender?: string | null) => {
+      switch (gender?.toLowerCase()) {
+          case 'male':
+              return 'bg-blue-100 dark:bg-blue-950';
+          case 'female':
+              return 'bg-pink-100 dark:bg-pink-950';
+          case 'couple':
+              return 'bg-yellow-100 dark:bg-yellow-950';
+          default:
+              return 'bg-gray-100 dark:bg-gray-800';
+      }
+  };
+
+  const backgroundClass = getGenderBackground(profile.gender);
+  const age = calculateAge(profile.dob); // Calculate the user's age
+
+  return (
+      <div className={`flex flex-1 items-center justify-between p-4 rounded-lg ${backgroundClass}`}>
+          <div className="flex ">
+              <div className="flex items-center gap-3 mr-8">
+                  <CountryFlag countryName={profile.country} />
+                  <h4 className="font-bold">
+                      {profile.username || 'Anonymous'}
+                      {/* Display the age if it's available */}
+                      {age !== null && <span className="font-normal text-muted-foreground"> ({age})</span>}
+                  </h4>
+              </div>
+              <p className="text-xs font-mono mt-2 text-muted-foreground">{profile.id}</p>
+          </div>
+          <Badge className="text-xs mt-1 pr-2">
+              <span>{profile.role || 'N/A'}</span>
+          </Badge>
+      </div>
+  )
+}
 
 // --- Main Component ---
 export function ActiveMatchesView() {

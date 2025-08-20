@@ -301,4 +301,4 @@ function ReportDetailPage() {
   )
 }
 
-export default withAuth(ReportDetailPage);
+export default withAuth(ReportDetailPage)(['admin', 'mod']);

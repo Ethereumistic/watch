@@ -57,7 +57,8 @@ type AuthState = {
   fetchUserProfile: (user: User) => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+// MODIFIED: Added `get` to the create function arguments
+export const useAuthStore = create<AuthState>((set, get) => ({
   session: null,
   user: null,
   profile: null,
@@ -66,6 +67,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   setSession: (session) => set({ session, user: session?.user ?? null }),
   setProfile: (profile) => set({ profile }),
   setPartnerProfile: (profile) => set({ partnerProfile: profile }), // Setter for partner profile
+  
+  // MODIFIED: The logic inside fetchUserProfile is now more resilient
   fetchUserProfile: async (user: User) => {
     const supabase = createClient();
     try {
@@ -77,13 +80,18 @@ export const useAuthStore = create<AuthState>((set) => ({
 
       if (error) {
         console.warn('Error fetching profile or profile does not exist:', error.message);
-        set({ profile: null });
+        // FIX: Only set profile to null if there wasn't one to begin with.
+        // This prevents a failed refresh from wiping a valid, server-initialized profile.
+        if (!get().profile) {
+          set({ profile: null });
+        }
       } else {
         set({ profile: profileData as Profile });
       }
     } catch (error) {
       console.error('Error in fetchUserProfile:', error);
-      set({ profile: null });
+      // FIX: We also don't want to clear the profile on a generic catch error.
+      // The existing profile is better than no profile.
     }
   },
 }))
